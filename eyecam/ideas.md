@@ -14,9 +14,9 @@ Use this page as a lightweight place to capture thoughts, feature ideas, project
 
 ## Experiments
 
-### Motorcycle race game: body-controlled racing
+### 1. Motorcycle race game: body-controlled racing
 
-A multiplayer racing game you ride with your body.
+A multiplayer racing game you ride with your body. Potentially mobile but likely better a web app.
 
 #### Controls
 
@@ -26,7 +26,7 @@ A multiplayer racing game you ride with your body.
 
 #### The mechanic that makes it a game: grip budget
 
-Each bike has limited tire grip. Lean angle and throttle both draw from it, so leaning hard at full throttle makes you slide out and lose speed. Good riders brake late, lean in, and get back on the gas at the corner exit. That's real riding, and it gives skilled players a visible edge, so the judges' first attempt will be funny and their second will be competitive.
+Each bike has limited tire grip. Lean angle and throttle both draw from it, so leaning hard at full throttle makes you slide out and lose speed. Good riders brake late, lean in, and get back on the gas at the corner exit.
 
 #### Two cheap extras
 
@@ -53,6 +53,11 @@ Each bike has limited tire grip. Lean angle and throttle both draw from it, so l
 3. Two-player rooms over Socket.IO with live positions
 4. Lap timer, start lights, finish screen
 5. Pi scoreboard and spectator hazards, only if there's time
+
+#### Questions
+- Visual style
+- Are the hand controls awkward? Experiment with a better way to design that aspect while making it clear enough to the computer to prevent hiccups
+- Should we add a secondary steering controller besides leaning for turning the handle bars?
 
 ## Notes
 
