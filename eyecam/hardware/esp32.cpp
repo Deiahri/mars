@@ -1,0 +1,1 @@
+// code that initialize the ESP32 board and camera ( this could become an .ino file )
