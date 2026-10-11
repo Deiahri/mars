@@ -1,12 +1,18 @@
-#include "esp_camera.h"
 #include <WiFi.h>
-#include "esp_http_server.h"
+#include <HTTPClient.h>
+#include "esp_camera.h"
+#include <base64.h> // Ensure you have a base64 library installed
 
-// Replace with your network credentials
-const char* ssid = "YOUR_SSID";
-const char* password = "YOUR_PASSWORD";
+// --- WiFi Configuration ---
+const char* ssid = "UHGuest";
+const char* password = "";
 
-// AI-Thinker ESP32-CAM pin configuration
+// --- Server Configuration ---
+const char* serverHost = "192.168.1.50"; 
+const char* serverPath = "/upload"; // Ensure this starts with a slash
+const int serverPort = 443; // 443 is the standard port for HTTPS
+
+// --- Camera Pins (AI Thinker Model) ---
 #define PWDN_GPIO_NUM     32
 #define RESET_GPIO_NUM    -1
 #define XCLK_GPIO_NUM      0
@@ -24,131 +30,148 @@ const char* password = "YOUR_PASSWORD";
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
-httpd_handle_t stream_httpd = NULL;
+const int BATCH_SIZE = 1; // Number of images per JSON payload
 
-// HTTP handler for the MJPEG stream
-static esp_err_t stream_handler(httpd_req_t *req) {
-    camera_fb_t * fb = NULL;
-    esp_err_t res = ESP_OK;
-    size_t _jpg_buf_len = 0;
-    uint8_t * _jpg_buf = NULL;
-    char * part_buf[64];
+void setupCamera() {
+  camera_config_t config;
+  config.ledc_channel = LEDC_CHANNEL_0;
+  config.ledc_timer = LEDC_TIMER_0;
+  config.pin_d0 = Y2_GPIO_NUM;
+  config.pin_d1 = Y3_GPIO_NUM;
+  config.pin_d2 = Y4_GPIO_NUM;
+  config.pin_d3 = Y5_GPIO_NUM;
+  config.pin_d4 = Y6_GPIO_NUM;
+  config.pin_d5 = Y7_GPIO_NUM;
+  config.pin_d6 = Y8_GPIO_NUM;
+  config.pin_d7 = Y9_GPIO_NUM;
+  config.pin_xclk = XCLK_GPIO_NUM;
+  config.pin_pclk = PCLK_GPIO_NUM;
+  config.pin_vsync = VSYNC_GPIO_NUM;
+  config.pin_href = HREF_GPIO_NUM;
+  config.pin_sscb_sda = SIOD_GPIO_NUM;
+  config.pin_sscb_scl = SIOC_GPIO_NUM;
+  config.pin_pwdn = PWDN_GPIO_NUM;
+  config.pin_reset = RESET_GPIO_NUM;
+  config.xclk_freq_hz = 20000000;
+  config.pixel_format = PIXFORMAT_JPEG;
+  
+  // Use lower resolution for batching in JSON to avoid running out of memory
+  if(psramFound()){
+    config.frame_size = FRAMESIZE_QVGA; 
+    config.jpeg_quality = 12;
+    config.fb_count = 2;
+  } else {
+    config.frame_size = FRAMESIZE_QQVGA;
+    config.jpeg_quality = 12;
+    config.fb_count = 1;
+  }
 
-    res = httpd_resp_set_type(req, "multipart/x-mixed-replace;boundary=123456789000000000000987654321");
-    if(res != ESP_OK) return res;
-
-    while(true) {
-        fb = esp_camera_fb_get();
-        if (!fb) {
-            Serial.println("Camera capture failed");
-            res = ESP_FAIL;
-        } else {
-            if(fb->format != PIXFORMAT_JPEG){
-                bool jpeg_converted = frame2jpg(fb, 80, &_jpg_buf, &_jpg_buf_len);
-                esp_camera_fb_return(fb);
-                fb = NULL;
-                if(!jpeg_converted){
-                    Serial.println("JPEG compression failed");
-                    res = ESP_FAIL;
-                }
-            } else {
-                _jpg_buf_len = fb->len;
-                _jpg_buf = fb->buf;
-            }
-        }
-        if(res == ESP_OK){
-            size_t hlen = snprintf((char *)part_buf, 64, "\r\n--123456789000000000000987654321\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n", _jpg_buf_len);
-            res = httpd_resp_send_chunk(req, (const char *)part_buf, hlen);
-        }
-        if(res == ESP_OK){
-            res = httpd_resp_send_chunk(req, (const char *)_jpg_buf, _jpg_buf_len);
-        }
-        if(fb){
-            esp_camera_fb_return(fb);
-            fb = NULL;
-            _jpg_buf = NULL;
-        } else if(_jpg_buf){
-            free(_jpg_buf);
-            _jpg_buf = NULL;
-        }
-        if(res != ESP_OK) break;
-    }
-    return res;
+  esp_err_t err = esp_camera_init(&config);
+  if (err != ESP_OK) {
+    Serial.printf("Camera init failed with error 0x%x", err);
+    return;
+  }
 }
 
-void startCameraServer(){
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 80;
-    httpd_uri_t index_uri = {
-        .uri       = "/",
-        .method    = HTTP_GET,
-        .handler   = stream_handler,
-        .user_ctx  = NULL
-    };
-    if (httpd_start(&stream_httpd, &config) == ESP_OK) {
-        httpd_register_uri_handler(stream_httpd, &index_uri);
+void sendImageBatch() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi Disconnected");
+    return;
+  }
+
+  WiFiClientSecure client;
+  client.setInsecure(); // Bypasses SSL certificate verification
+
+  Serial.println("Connecting to HTTPS server...");
+  if (!client.connect(serverHost, serverPort)) {
+    Serial.println("Connection failed! Still out of memory for SSL.");
+    return;
+  }
+
+  // 1. Capture all frames in the batch and store their pointers
+  camera_fb_t* fbs[BATCH_SIZE];
+  size_t total_b64_size = 0;
+
+  Serial.println("Capturing batch...");
+  for (int i = 0; i < BATCH_SIZE; i++) {
+    fbs[i] = esp_camera_fb_get();
+    if (fbs[i]) {
+      // Base64 encoding predictably increases size by 4/3
+      total_b64_size += 4 * ((fbs[i]->len + 2) / 3); 
     }
+    delay(200);
+  }
+
+  // 2. Prepare the JSON structure
+  String jsonStart = "{\"device_id\":\"esp32_cam_01\",\"timestamp\":" + String(millis()) + ",\"images\":[\"";
+  String jsonSeparator = "\",\"";
+  String jsonEnd = "\"]}";
+
+  // 3. Calculate the exact total length of the payload
+  size_t content_length = jsonStart.length() + jsonEnd.length() + total_b64_size;
+  if (BATCH_SIZE > 1) {
+    content_length += (BATCH_SIZE - 1) * jsonSeparator.length();
+  }
+
+  // 4. Send standard HTTP Headers
+  Serial.println("Sending headers...");
+  client.print(String("POST ") + serverPath + " HTTP/1.1\r\n");
+  client.print(String("Host: ") + serverHost + "\r\n");
+  client.print("Content-Type: application/json\r\n");
+  client.print("Content-Length: " + String(content_length) + "\r\n");
+  client.print("Connection: close\r\n\r\n");
+
+  // 5. Stream the JSON payload in chunks
+  Serial.println("Streaming data chunks...");
+  client.print(jsonStart);
+
+  for (int i = 0; i < BATCH_SIZE; i++) {
+    if (fbs[i]) {
+      // Encode and send one image at a time to save RAM
+      String base64Img = base64::encode((uint8_t *)fbs[i]->buf, fbs[i]->len);
+      client.print(base64Img); 
+      
+      // Return the buffer immediately to free up PSRAM
+      esp_camera_fb_return(fbs[i]); 
+      
+      if (i < BATCH_SIZE - 1) {
+        client.print(jsonSeparator);
+      }
+    }
+  }
+  
+  client.print(jsonEnd);
+
+  // 6. Read the server's response
+  Serial.println("Waiting for response...");
+  while (client.connected()) {
+    String line = client.readStringUntil('\n');
+    if (line == "\r") { // End of headers
+      break; 
+    }
+  }
+  
+  // Print the first line of the actual response body
+  String response = client.readStringUntil('\n');
+  Serial.println("Response: " + response);
+  
+  client.stop();
 }
 
 void setup() {
-    Serial.begin(115200);
-    Serial.setDebugOutput(true);
+  Serial.begin(115200);
+  
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected");
 
-    camera_config_t config;
-    config.ledc_channel = LEDC_CHANNEL_0;
-    config.ledc_timer = LEDC_TIMER_0;
-    config.pin_d0 = Y2_GPIO_NUM;
-    config.pin_d1 = Y3_GPIO_NUM;
-    config.pin_d2 = Y4_GPIO_NUM;
-    config.pin_d3 = Y5_GPIO_NUM;
-    config.pin_d4 = Y6_GPIO_NUM;
-    config.pin_d5 = Y7_GPIO_NUM;
-    config.pin_d6 = Y8_GPIO_NUM;
-    config.pin_d7 = Y9_GPIO_NUM;
-    config.pin_xclk = XCLK_GPIO_NUM;
-    config.pin_pclk = PCLK_GPIO_NUM;
-    config.pin_vsync = VSYNC_GPIO_NUM;
-    config.pin_href = HREF_GPIO_NUM;
-    config.pin_sccb_sda = SIOD_GPIO_NUM;
-    config.pin_sccb_scl = SIOC_GPIO_NUM;
-    config.pin_pwdn = PWDN_GPIO_NUM;
-    config.pin_reset = RESET_GPIO_NUM;
-    config.xclk_freq_hz = 20000000;
-    config.pixel_format = PIXFORMAT_JPEG;
-    
-    // Init with high specs to pre-allocate larger buffers
-    if(psramFound()){
-        config.frame_size = FRAMESIZE_VGA;
-        config.jpeg_quality = 10;
-        config.fb_count = 2;
-    } else {
-        config.frame_size = FRAMESIZE_SVGA;
-        config.jpeg_quality = 12;
-        config.fb_count = 1;
-    }
-
-    // Camera init
-    esp_err_t err = esp_camera_init(&config);
-    if (err != ESP_OK) {
-        Serial.printf("Camera init failed with error 0x%x", err);
-        return;
-    }
-
-    // WiFi connection
-    WiFi.begin(ssid, password);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
-    }
-    Serial.println("");
-    Serial.println("WiFi connected");
-    
-    startCameraServer();
-    
-    Serial.print("Camera Stream Ready! Go to: http://");
-    Serial.println(WiFi.localIP());
+  setupCamera();
 }
 
 void loop() {
-    delay(10000); // Server runs asynchronously, nothing needed here
+  sendImageBatch();
+  delay(5000); // Wait 10 seconds before sending the next batch
 }
