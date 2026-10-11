@@ -7,7 +7,7 @@ chases your eye. A small translucent halo (or, on a snapped target, only a glow 
 avoids that loop. The OS arrow is hidden with XFixes while this pointer drives; X shows it again by
 itself if this process dies.
 
-The window is override-redirect (never focused: Orion and keystroke mode type into whatever has
+The window is override-redirect (never focused: Mars and keystroke mode type into whatever has
 focus) and has an empty input shape, so every click goes through to the app underneath.
 
 stdin, one JSON object per line (from server/pointer/brain.ts):
@@ -41,7 +41,7 @@ import theme as T  # noqa: E402
 HALO_R = 18
 RING_R = 24
 GLOW_OUTSET = 4
-# Calm palette (server/theme.py, Orion night sky): soft, low contrast, nothing pure white.
+# Calm palette (server/theme.py, night sky): soft, low contrast, nothing pure white.
 HALO = T.STAR
 GLOW = T.STAR
 RING = {"dwell": T.MINT, "drag": T.AMBER}

@@ -1,4 +1,4 @@
-// What Orion and dictation share: recording the laptop mic, and speech → text with ElevenLabs Scribe.
+// What Mars and dictation share: recording the laptop mic, and speech → text with ElevenLabs Scribe.
 //
 // The mic is read here with arecord (not in the page), so nothing needs a browser permission and
 // recording keeps working while the page is buried under other windows.

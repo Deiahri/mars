@@ -11,15 +11,15 @@
 //                   gm:button {button, down}         the phone's Left / Right / Menu (left|right|wheel)
 //                   gm:scroll-speed {perS}           the phone's scroll speed slider
 //                   gm:toggle {what: mouse|keys|wake|tts|dwell|snap|ai}
-//                   gm:orion {action: start|ok|cancel}
+//                   gm:mars {action: start|ok|cancel}
 //                   gm:dictate {action: start|ok|cancel}
 //                   gm:keys-gap {ms}                 minimum time between keystroke-mode taps
 //                   gm:memory {on}                   screen memory recording (server/memory/)
 //                   gm:stop                          the page's Stop / Esc: everything off
 //   server → page   gm:hello {w, h, session, warning?, token}
 //                   gm:memory MemoryStatus           5×/s with gm:pointer
-//                   gm:backboard {on, count}         Orion's long-term memory of the person (server/backboard.ts)
-//                   gm:state RemoteState             mouse / keys / Orion / pointer ui / button labels, forwarded to the phone
+//                   gm:backboard {on, count}         Mars's long-term memory of the person (server/backboard.ts)
+//                   gm:state RemoteState             mouse / keys / Mars / pointer ui / button labels, forwarded to the phone
 //                   gm:pointer PointerStatus + {ai}  5×/s, for the page's readouts (ai: VisionStatus)
 //                   gm:heard {text}                  a keystroke-mode word that was acted on
 //
@@ -45,7 +45,7 @@ import { KeyMode } from './keys.ts';
 import { ScreenMemory } from './memory/recorder.ts';
 import { Voice, type VoiceOpts } from './voice.ts';
 import { WakeWord } from './wake.ts';
-import { Orion, type OverlayMsg, type SttOpts } from './orion.ts';
+import { Mars, type OverlayMsg, type SttOpts } from './mars.ts';
 import { PointerBrain } from './pointer/brain.ts';
 import type { Target } from './pointer/snap.ts';
 import { startTargets } from './targets.ts';
@@ -56,13 +56,13 @@ const run = promisify(execFile);
 export type DesktopOpts = {
   agent: AgentOpts;
   stt: SttOpts;
-  /** Orion's spoken answers (ElevenLabs TTS). */
+  /** Mars's spoken answers (ElevenLabs TTS). */
   voice: VoiceOpts;
-  /** "Hey Orion" listening on at start (server/wake.ts). */
+  /** "Hey Mars" listening on at start (server/wake.ts). */
   wake: boolean;
-  /** Backboard: Orion's long-term memory of the person. Off without a key. */
+  /** Backboard: Mars's long-term memory of the person. Off without a key. */
   backboardKey?: string;
-  /** GEMINI_API_KEY is set: Orion, screen memory captions and AI snap targets all use Gemini. */
+  /** GEMINI_API_KEY is set: Mars, screen memory captions and AI snap targets all use Gemini. */
   hasGemini: boolean;
   /** AI snap targets (server/vision-targets.ts) on at start. Needs hasGemini. */
   aiSnap: boolean;
@@ -147,7 +147,7 @@ class Pointer {
     void this.pump();
   }
 
-  /** Lets go of any button the phone is holding (mouse turned off, Orion taking over). */
+  /** Lets go of any button the phone is holding (mouse turned off, Mars taking over). */
   releaseAll() {
     for (const b of [...this.pressed]) this.button(b, false);
   }
@@ -234,8 +234,8 @@ export function desktop(opts: DesktopOpts): Plugin {
       const overlay = startOverlay<OverlayMsg>(server);
       const pointer = new Pointer((b, at) => screenMemory.event('click', { x: at?.x, y: at?.y, text: b === 'left' ? '' : `${b} button` }));
       let mouse = true;
-      /** The phone's pointer is idle while Orion drives (it would fight Gemini for the mouse). */
-      const pointerLive = () => mouse && w > 0 && (orion.state === 'idle' || orion.state === 'listening');
+      /** The phone's pointer is idle while Mars drives (it would fight Gemini for the mouse). */
+      const pointerLive = () => mouse && w > 0 && (mars.state === 'idle' || mars.state === 'listening');
       // Zoom-click snapshots (the overlay is cleared first; give the compositor a frame to show that).
       const desk = new Desktop();
       const deskReady = desk.init().catch((e) => console.warn('[sightline] no zoom snapshots:', (e as Error).message));
@@ -249,7 +249,7 @@ export function desktop(opts: DesktopOpts): Plugin {
         live: pointerLive,
         menuAction: (id) => {
           if (id === 'dictate') startVoice('dictate');
-          else if (id === 'orion') startVoice('orion');
+          else if (id === 'mars') startVoice('mars');
           else if (id === 'snap') cycleSnap();
           else if (id === 'keys' || id === 'ai' || id === 'wake' || id === 'tts') toggle(id);
         },
@@ -258,7 +258,7 @@ export function desktop(opts: DesktopOpts): Plugin {
           keys: keys.status === 'unavailable' ? 'n/a' : keys.status === 'loading' ? '…' : keys.status,
           wake: wake.status === 'unavailable' ? 'n/a' : wake.status === 'loading' ? '…' : wake.status,
           tts: !voice.on && voice.enabled ? 'n/a' : voice.enabled ? 'on' : 'off',
-          orion: !orion.missing,
+          mars: !mars.missing,
           dictate: !dictation.missing,
         }),
         zoomShot: async (r) => {
@@ -295,7 +295,7 @@ export function desktop(opts: DesktopOpts): Plugin {
         { enabled: opts.aiSnap },
       );
 
-      // Screen memory: what was on screen, for Orion to search and re-look at later.
+      // Screen memory: what was on screen, for Mars to search and re-look at later.
       const screenMemory = new ScreenMemory(
         [w, h],
         {
@@ -321,9 +321,9 @@ export function desktop(opts: DesktopOpts): Plugin {
         keys: keys.status,
         wake: wake.status,
         tts: voice.on,
-        orion: orion.state,
-        orionText: orion.text,
-        orionMissing: orion.missing,
+        mars: mars.state,
+        marsText: mars.text,
+        marsMissing: mars.missing,
         dictation: dictation.missing ? 'unavailable' : dictation.state,
         dictationText: dictation.text,
         dwell: brain.dwellOn,
@@ -335,14 +335,14 @@ export function desktop(opts: DesktopOpts): Plugin {
         paused: brain.paused,
         labels: labels(),
       });
-      /** What the phone's buttons do now: Orion's or dictation's answers while busy, else the pointer's. */
+      /** What the phone's buttons do now: Mars's or dictation's answers while busy, else the pointer's. */
       const labels = (): RemoteState['labels'] => {
         if (dictation.state === 'listening') return { left: 'Type it', right: 'Cancel', wheel: '' };
         if (dictation.state === 'transcribing') return { left: '', right: 'Cancel', wheel: '' };
-        if (orion.state === 'listening') return { left: 'OK', right: 'Cancel', wheel: '' };
-        if (orion.state === 'confirm') return { left: 'Yes', right: 'No', wheel: '' };
-        if (orion.state === 'transcribing') return { left: '', right: 'Cancel', wheel: '' };
-        if (orion.state === 'working') return { left: '', right: 'Stop', wheel: '' };
+        if (mars.state === 'listening') return { left: 'OK', right: 'Cancel', wheel: '' };
+        if (mars.state === 'confirm') return { left: 'Yes', right: 'No', wheel: '' };
+        if (mars.state === 'transcribing') return { left: '', right: 'Cancel', wheel: '' };
+        if (mars.state === 'working') return { left: '', right: 'Stop', wheel: '' };
         if (!mouse) return { left: '', right: '', wheel: 'Mouse on' };
         return brain.labels();
       };
@@ -355,56 +355,56 @@ export function desktop(opts: DesktopOpts): Plugin {
         },
         () => pushState(),
       );
-      /** Keystroke mode pauses while Orion or dictation has the mic. */
-      const micBusy = () => orion.state !== 'idle' || dictation.state !== 'idle';
+      /** Keystroke mode pauses while Mars or dictation has the mic. */
+      const micBusy = () => mars.state !== 'idle' || dictation.state !== 'idle';
       const person = new Backboard(opts.backboardKey);
       if (person.on) person.refreshCount().catch((e) => console.warn('[backboard]', (e as Error).message));
       const agentOpts = { ...opts.agent, memory: () => (screenMemory.hasFrames ? screenMemory.memory : null), person };
       const voice = new Voice(opts.voice);
-      const orion = new Orion(agentOpts, opts.stt, opts.hasGemini, () => {
-        // Orion owns the mic and the mouse while it listens and works.
+      const mars = new Mars(agentOpts, opts.stt, opts.hasGemini, () => {
+        // Mars owns the mic and the mouse while it listens and works.
         keys.suspend(micBusy());
         updateWake();
-        if (orion.state !== 'idle') {
+        if (mars.state !== 'idle') {
           brain.stopActions();
           pointer.releaseAll();
         }
         pushState();
-      }, overlay, (text) => screenMemory.event('orion', { text }), voice);
+      }, overlay, (text) => screenMemory.event('mars', { text }), voice);
       // Dictation only takes the mic; the pointer keeps moving, its clicks wait (the router below).
       const dictation = new Dictation(opts.stt, () => {
         keys.suspend(micBusy());
         updateWake();
         pushState();
       }, overlay, (text) => screenMemory.event('dictation', { text }));
-      // "Hey Orion" (offline): starts Orion listening, like the wheel's Orion; the phone's OK still
-      // sends. While Orion asks a yes/no question, a spoken "yes" / "no" answers it.
+      // "Hey Mars" (offline): starts Mars listening, like the wheel's Mars; the phone's OK still
+      // sends. While Mars asks a yes/no question, a spoken "yes" / "no" answers it.
       const wake = new WakeWord(
         () => {
-          if (orion.state !== 'idle' || dictation.state !== 'idle') return;
+          if (mars.state !== 'idle' || dictation.state !== 'idle') return;
           voice.chime();
-          startVoice('orion');
+          startVoice('mars');
         },
         (yes) => {
-          if (orion.state !== 'confirm') return;
-          if (yes) void orion.ok();
-          else orion.cancel();
+          if (mars.state !== 'confirm') return;
+          if (yes) void mars.ok();
+          else mars.cancel();
         },
         () => {
-          orion.voiceAnswers = wake.status === 'on';
+          mars.voiceAnswers = wake.status === 'on';
           pushState();
         },
       );
-      /** Orion's voice and the recorders would otherwise be heard as "Hey Orion" / "yes". */
+      /** Mars's voice and the recorders would otherwise be heard as "Hey Mars" / "yes". */
       let quietTimer: ReturnType<typeof setTimeout> | null = null;
       const updateWake = () => {
-        const busy = orion.state === 'listening' || orion.state === 'transcribing' || dictation.state !== 'idle';
+        const busy = mars.state === 'listening' || mars.state === 'transcribing' || dictation.state !== 'idle';
         if (busy || voice.speaking) {
           if (quietTimer) clearTimeout(quietTimer);
           quietTimer = null;
           return wake.suspend(true);
         }
-        // The room's echo of Orion's last word: wait a moment before listening again.
+        // The room's echo of Mars's last word: wait a moment before listening again.
         quietTimer ??= setTimeout(() => {
           quietTimer = null;
           wake.suspend(false);
@@ -413,11 +413,11 @@ export function desktop(opts: DesktopOpts): Plugin {
       voice.onSpeaking = () => updateWake();
       if (opts.wake) wake.set(true);
       /** One voice thing at a time: they share the mic and the phone's buttons. */
-      const startVoice = (what: 'orion' | 'dictate') => {
-        if (micBusy()) return overlay({ state: 'info', text: `Busy: finish ${orion.state !== 'idle' ? 'Orion' : 'dictation'} first` });
+      const startVoice = (what: 'mars' | 'dictate') => {
+        if (micBusy()) return overlay({ state: 'info', text: `Busy: finish ${mars.state !== 'idle' ? 'Mars' : 'dictation'} first` });
         brain.stopActions();
         voice.stop();
-        if (what === 'orion') orion.start();
+        if (what === 'mars') mars.start();
         else dictation.start();
       };
       /** The wheel's Snap: off → on → on + AI targets (when there's a Gemini key) → off. */
@@ -436,7 +436,7 @@ export function desktop(opts: DesktopOpts): Plugin {
         vision.dispose();
         brain.dispose();
         keys.dispose();
-        orion.dispose();
+        mars.dispose();
         dictation.dispose();
         screenMemory.dispose();
         voice.stop();
@@ -481,11 +481,11 @@ export function desktop(opts: DesktopOpts): Plugin {
           else if (button === 'right') dictation.cancel();
           return;
         }
-        // While Orion listens or works, Left / Right answer it (OK, Yes / Cancel, No, Stop).
-        if (orion.state !== 'idle') {
+        // While Mars listens or works, Left / Right answer it (OK, Yes / Cancel, No, Stop).
+        if (mars.state !== 'idle') {
           if (!down) return brain.phoneButton(button, false);
-          if (button === 'left' && (orion.state === 'listening' || orion.state === 'confirm')) void orion.ok();
-          else if (button === 'right') orion.cancel();
+          if (button === 'left' && (mars.state === 'listening' || mars.state === 'confirm')) void mars.ok();
+          else if (button === 'right') mars.cancel();
           return;
         }
         if (!mouse) {
@@ -512,14 +512,14 @@ export function desktop(opts: DesktopOpts): Plugin {
           overlay({ state: 'info', text: keys.on ? '⌨  Keys on: say left, hold up, stop up…' : '⌨  Keys off' });
         } else if (what === 'wake') {
           if (wake.status === 'unavailable') {
-            overlay({ state: 'error', text: '“Hey Orion” needs `npm run setup:keys`' });
+            overlay({ state: 'error', text: '“Hey Mars” needs `npm run setup:keys`' });
             return;
           }
           wake.set(!wake.on);
-          overlay({ state: 'info', text: wake.on ? '✦  Listening for “Hey Orion” (offline)' : '✦  “Hey Orion” off' });
+          overlay({ state: 'info', text: wake.on ? '✦  Listening for “Hey Mars” (offline)' : '✦  “Hey Mars” off' });
         } else if (what === 'tts') {
           voice.setEnabled(!voice.enabled);
-          overlay({ state: 'info', text: voice.enabled ? 'Orion speaks its answers' : 'Orion stays quiet' });
+          overlay({ state: 'info', text: voice.enabled ? 'Mars speaks its answers' : 'Mars stays quiet' });
           pushState();
         } else if (what === 'dwell') {
           brain.toggleDwell();
@@ -537,10 +537,10 @@ export function desktop(opts: DesktopOpts): Plugin {
         }
       };
       on<{ what: 'mouse' | 'keys' | 'wake' | 'tts' | 'dwell' | 'snap' | 'ai' }>('gm:toggle', ({ what }) => toggle(what));
-      on<{ action: 'start' | 'ok' | 'cancel' }>('gm:orion', ({ action }) => {
-        if (action === 'start') startVoice('orion');
-        else if (action === 'ok') void orion.ok();
-        else if (action === 'cancel') orion.cancel();
+      on<{ action: 'start' | 'ok' | 'cancel' }>('gm:mars', ({ action }) => {
+        if (action === 'start') startVoice('mars');
+        else if (action === 'ok') void mars.ok();
+        else if (action === 'cancel') mars.cancel();
       });
       on<{ action: 'start' | 'ok' | 'cancel' }>('gm:dictate', ({ action }) => {
         if (action === 'start') startVoice('dictate');
@@ -557,15 +557,15 @@ export function desktop(opts: DesktopOpts): Plugin {
         pointer.releaseAll();
         keys.set(false);
         wake.set(false);
-        orion.cancel();
+        mars.cancel();
         dictation.cancel();
         void screenMemory.setEnabled(false);
-        overlay({ state: 'info', text: 'Stopped: phone mouse, keys, “Hey Orion”, Orion, dictation and screen memory are off' });
+        overlay({ state: 'info', text: 'Stopped: phone mouse, keys, “Hey Mars”, Mars, dictation and screen memory are off' });
         pushState();
       });
 
       console.log(
-        `[sightline] screen ${w}×${h} (${session.type}); keys ${keys.status}; Orion ${orion.missing ?? 'ready'}; dictation ${dictation.missing ?? 'ready'}; voice ${voice.on ? 'on' : 'off'}; Hey Orion ${wake.status}; Backboard ${person.on ? 'on' : 'needs BACKBOARD_API_KEY'}; AI targets ${vision.available ? (vision.enabled ? 'on' : 'off') : 'need GEMINI_API_KEY'}; screen memory ${screenMemory.missing ?? (opts.memory ? 'on' : 'off')}`,
+        `[sightline] screen ${w}×${h} (${session.type}); keys ${keys.status}; Mars ${mars.missing ?? 'ready'}; dictation ${dictation.missing ?? 'ready'}; voice ${voice.on ? 'on' : 'off'}; Hey Mars ${wake.status}; Backboard ${person.on ? 'on' : 'needs BACKBOARD_API_KEY'}; AI targets ${vision.available ? (vision.enabled ? 'on' : 'off') : 'need GEMINI_API_KEY'}; screen memory ${screenMemory.missing ?? (opts.memory ? 'on' : 'off')}`,
       );
     },
   };

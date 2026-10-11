@@ -1,6 +1,6 @@
 // Turns one kept screenshot into a small searchable record: Gemini reads the screen and returns
 // structured JSON; we flatten it to text and embed it locally. The screenshot itself stays on
-// disk for Orion to re-look at. Ported from screen-memory/src/caption.ts (it used Claude Haiku).
+// disk for Mars to re-look at. Ported from screen-memory/src/caption.ts (it used Claude Haiku).
 
 import { readFileSync } from 'node:fs';
 import { GEMINI, generateJson } from '../gemini.ts';

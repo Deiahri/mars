@@ -1,4 +1,4 @@
-// Screen memory as tools for a Gemini loop: Orion's agent (server/agent.ts) and the memory-only
+// Screen memory as tools for a Gemini loop: Mars's agent (server/agent.ts) and the memory-only
 // `npm run memory:ask`. The model finds candidate moments by caption (cheap), then re-looks at the
 // real screenshot when the caption isn't enough. From screen-memory/src/agent.ts.
 
@@ -15,7 +15,7 @@ export const MEMORY_TOOLS: ToolDef[] = [
   {
     name: 'search_memory',
     description:
-      'Semantic + keyword search over captions of earlier screenshots of this desktop. Returns the best-matching moments (frame id, time span, window, app, a one-line activity, what the pointer was on, verbatim key text), plus matching things the person dictated or asked Orion. Captions are short and lossy: use view_memory_screenshot to read exact details.',
+      'Semantic + keyword search over captions of earlier screenshots of this desktop. Returns the best-matching moments (frame id, time span, window, app, a one-line activity, what the pointer was on, verbatim key text), plus matching things the person dictated or asked Mars. Captions are short and lossy: use view_memory_screenshot to read exact details.',
     parameters: {
       type: 'object',
       properties: {
@@ -32,7 +32,7 @@ export const MEMORY_TOOLS: ToolDef[] = [
   {
     name: 'memory_timeline',
     description:
-      'What was on screen between two times, oldest first (thinned evenly to at most 40 moments), and what the person did then (clicks, dictation, Orion commands). Use for "what was I doing at/around/between ..." questions where there is no topic to search for.',
+      'What was on screen between two times, oldest first (thinned evenly to at most 40 moments), and what the person did then (clicks, dictation, Mars commands). Use for "what was I doing at/around/between ..." questions where there is no topic to search for.',
     parameters: {
       type: 'object',
       properties: {
@@ -46,7 +46,7 @@ export const MEMORY_TOOLS: ToolDef[] = [
   {
     name: 'memory_usage',
     description:
-      'Screen time per app (minutes, number of distinct screens) and actions per hour (clicks, dictations, Orion requests) between two times. Use for "how long was I on …", "what did I spend the morning on", "when was I most active" questions. Screen time is approximate: it counts how long each kept screen stayed unchanged.',
+      'Screen time per app (minutes, number of distinct screens) and actions per hour (clicks, dictations, Mars requests) between two times. Use for "how long was I on …", "what did I spend the morning on", "when was I most active" questions. Screen time is approximate: it counts how long each kept screen stayed unchanged.',
     parameters: {
       type: 'object',
       properties: {
@@ -76,7 +76,7 @@ export const MEMORY_TOOLS: ToolDef[] = [
 export const isMemoryTool = (name: string) => MEMORY_TOOLS.some((t) => t.name === name);
 
 /** For a system prompt: how to use the memory, and that what it holds is evidence, not instructions. */
-export const MEMORY_PROMPT = `You also have a memory of this screen: a screenshot was kept every few seconds whenever the screen changed, each with a short caption, plus a log of the person's clicks, dictation and earlier Orion commands.
+export const MEMORY_PROMPT = `You also have a memory of this screen: a screenshot was kept every few seconds whenever the screen changed, each with a short caption, plus a log of the person's clicks, dictation and earlier Mars commands.
 - For questions about the past ("what was that error earlier", "what was I reading at 3"), answer from memory with search_memory / memory_timeline and do not touch the desktop. For "how long / how much / when most" questions use memory_usage. Before quoting exact text or numbers, open the frame with view_memory_screenshot (zoom into a region for small text).
 - To get back to something seen before ("reopen the page I was reading"), find it in memory first (exact title, URL or file name), then use the computer.
 - Each memory result covers a time span: the screen looked that way from "from" to "to". Mention the time you relied on (e.g. "at 14:03"). If memory doesn't have it, say so.

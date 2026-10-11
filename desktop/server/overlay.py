@@ -1,17 +1,17 @@
-"""Status overlay: an animated pill near the bottom of the screen, in the Orion night-sky theme.
+"""Status overlay: an animated pill near the bottom of the screen, in the night-sky theme.
 
 The control page sits behind the app you're controlling, so it can't show anything. This window
-can, and it must never take keyboard focus (Orion and keystroke mode type into whatever has focus):
+can, and it must never take keyboard focus (Mars and keystroke mode type into whatever has focus):
 it's override-redirect (unmanaged, never focused, above normal windows) with an empty input shape
 (clicks go through). A transparent strip across the bottom of the screen; the pill is drawn in it,
 so it can grow, shrink, slide and fade without the window moving.
 
 stdin, one JSON object per line (from server/plugin.ts):
-  {"state": "listening", "level": 0..1, "text"?: "..."}  Orion or dictation is recording
+  {"state": "listening", "level": 0..1, "text"?: "..."}  Mars or dictation is recording
   {"state": "transcribing"}
-  {"state": "working", "text": "..."}    Orion's progress; stays up
-  {"state": "confirm", "text": "...", "hint"?: "..."}   Orion asks yes / no; stays up
-  {"state": "done", "text": "..."}       Orion's answer; fades after a time that grows with its length
+  {"state": "working", "text": "..."}    Mars's progress; stays up
+  {"state": "confirm", "text": "...", "hint"?: "..."}   Mars asks yes / no; stays up
+  {"state": "done", "text": "..."}       Mars's answer; fades after a time that grows with its length
   {"state": "error", "text": "..."}
   {"state": "info", "text": "..."}       a key that was pressed, mouse on/off...; fades quickly
   {"state": "hidden"}

@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       // WebRTC signaling between the laptop page and the phone, behind the pairing token.
       signaling(token),
-      // Moves/clicks the real pointer (xdotool), keystroke mode (Vosk), Orion (Gemini computer use).
+      // Moves/clicks the real pointer (xdotool), keystroke mode (Vosk), Mars (Gemini computer use).
       desktop({
         agent: {
           model: env.GEMINI_MODEL || 'gemini-3.8-flash',
@@ -36,7 +36,7 @@ export default defineConfig(({ mode }) => {
           enabled: env.TTS !== '0' && env.TTS !== 'false',
         },
         backboardKey: env.BACKBOARD_API_KEY || undefined,
-        // "Hey Orion" (offline Vosk) on at start. WAKE=0: off until turned on.
+        // "Hey Mars" (offline Vosk) on at start. WAKE=0: off until turned on.
         wake: env.WAKE !== '0' && env.WAKE !== 'false',
         hasGemini: Boolean(process.env.GEMINI_API_KEY),
         // Gemini finds snap targets in screenshots (box_2d detection, a fraction of a cent per new screen). AI_SNAP=0: off at start.

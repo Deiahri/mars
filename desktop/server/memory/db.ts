@@ -43,11 +43,11 @@ export type Frame = {
   error: string | null;
 };
 
-export type EventKind = 'click' | 'dictation' | 'orion';
+export type EventKind = 'click' | 'dictation' | 'mars';
 export type MemEvent = { id: number; ts: number; kind: EventKind; x: number | null; y: number | null; text: string };
 export type Usage = {
   by_app: { app: string; minutes: number; screens: number }[];
-  by_hour: { hour: number; clicks: number; dictations: number; orion: number }[];
+  by_hour: { hour: number; clicks: number; dictations: number; mars: number }[];
 };
 
 /** Embedding size: embeddinggemma and nomic-embed-text are both 768. */
@@ -271,11 +271,11 @@ export class Store {
        group by app order by minutes desc, screens desc limit 20`,
       range,
     );
-    const by_hour = await this.q<{ hour: number; clicks: number; dictations: number; orion: number }>(
+    const by_hour = await this.q<{ hour: number; clicks: number; dictations: number; mars: number }>(
       `select ${ms("time_bucket('1 hour', bucket)")} as hour,
               coalesce(sum(n) filter (where kind = 'click'), 0)::int as clicks,
               coalesce(sum(n) filter (where kind = 'dictation'), 0)::int as dictations,
-              coalesce(sum(n) filter (where kind = 'orion'), 0)::int as orion
+              coalesce(sum(n) filter (where kind = 'mars'), 0)::int as mars
        from ${this.s}.events_15m where bucket >= time_bucket('15 minutes', $1::timestamptz) and bucket < $2
        group by 1 order by 1`,
       range,
@@ -295,7 +295,7 @@ export class Store {
     );
   }
 
-  /** Text events (dictation, Orion) whose text contains any of `terms`, newest first. */
+  /** Text events (dictation, Mars) whose text contains any of `terms`, newest first. */
   async findEvents(terms: string[], since: number, until: number, limit: number): Promise<MemEvent[]> {
     if (!terms.length) return [];
     return this.q<MemEvent>(

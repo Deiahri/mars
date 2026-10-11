@@ -1,4 +1,4 @@
-// The read side of screen memory: search(), timeline(), usage(), getFrame(), image(). Orion's agent
+// The read side of screen memory: search(), timeline(), usage(), getFrame(), image(). Mars's agent
 // reaches these through server/memory/tools.ts. Ported from screen-memory/src/memory.ts; the search
 // itself now runs in Tiger (server/memory/db.ts `hybrid`).
 
@@ -45,7 +45,7 @@ export function summarize(f: Frame, score = 0): Hit {
 
 export function describeEvent(e: MemEvent): Did {
   const did =
-    e.kind === 'click' ? `clicked at (${e.x}, ${e.y})${e.text ? ` (${e.text})` : ''}` : e.kind === 'dictation' ? `dictated "${e.text}"` : `Orion: ${e.text}`;
+    e.kind === 'click' ? `clicked at (${e.x}, ${e.y})${e.text ? ` (${e.text})` : ''}` : e.kind === 'dictation' ? `dictated "${e.text}"` : `Mars: ${e.text}`;
   return { at: localTime(e.ts), did };
 }
 
@@ -62,7 +62,7 @@ export class Memory {
     const frames = (await Promise.all(ranked.map(async (r) => [await this.store.get(r.id), r.score] as const)))
       .filter((x): x is readonly [Frame, number] => !!x[0])
       .map(([f, score]) => summarize(f, score));
-    // What was said (dictation, Orion commands) is matched by keyword only; it's short and exact.
+    // What was said (dictation, Mars commands) is matched by keyword only; it's short and exact.
     const did = (await this.store.findEvents(words(query), opts.since ?? 0, opts.until ?? Date.now() + 1000, 5)).map(describeEvent);
     return { frames, did };
   }

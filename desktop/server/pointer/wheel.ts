@@ -14,12 +14,12 @@ export type MenuState = {
   snap: boolean;
   ai: 'n/a' | 'on' | 'off';
   keys: 'n/a' | 'on' | 'off' | '…';
-  /** The "Hey Orion" listener (server/wake.ts). */
+  /** The "Hey Mars" listener (server/wake.ts). */
   wake: 'n/a' | 'on' | 'off' | '…';
-  /** Orion's spoken answers (server/voice.ts). */
+  /** Mars's spoken answers (server/voice.ts). */
   tts: 'n/a' | 'on' | 'off';
-  /** Orion can run (API keys there). */
-  orion: boolean;
+  /** Mars can run (API keys there). */
+  mars: boolean;
   /** Dictation can run (ElevenLabs key there). */
   dictate: boolean;
   zoomK: number;
@@ -49,7 +49,7 @@ export function buildMenu(s: MenuState): MenuItem[] {
       label: 'More',
       sub: [
         { id: 'dictate', label: s.dictate ? 'Dictate' : 'Dictate (off)' },
-        { id: 'orion', label: s.orion ? 'Orion' : 'Orion (off)' },
+        { id: 'mars', label: s.mars ? 'Mars' : 'Mars (off)' },
         {
           id: 'settings',
           label: 'Settings',
@@ -61,8 +61,8 @@ export function buildMenu(s: MenuState): MenuItem[] {
               id: 'voice',
               label: 'Voice',
               sub: [
-                { id: 'wake', label: `Hey Orion: ${s.wake}` },
-                { id: 'tts', label: `Orion speaks: ${s.tts}` },
+                { id: 'wake', label: `Hey Mars: ${s.wake}` },
+                { id: 'tts', label: `Mars speaks: ${s.tts}` },
                 { id: 'keys', label: `Keys: ${s.keys}` },
               ],
             },

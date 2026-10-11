@@ -140,7 +140,7 @@ function run(remote: GymoteRemote, token: string) {
   }, 200);
 }
 
-const ORION_HINT: Partial<Record<RemoteState['orion'], string>> = {
+const MARS_HINT: Partial<Record<RemoteState['mars'], string>> = {
   listening: 'Listening… say what to do, then OK.',
   transcribing: 'Transcribing…',
 };
@@ -150,11 +150,11 @@ const DICTATION_HINT: Partial<Record<RemoteState['dictation'], string>> = {
 };
 
 let prev: RemoteState | null = null;
-/** The text line shows whichever of Orion and dictation spoke last. */
+/** The text line shows whichever of Mars and dictation spoke last. */
 let voiceLine = '';
 
 function render(s: RemoteState) {
-  const voice = s.orion !== 'idle' || s.dictation === 'listening' || s.dictation === 'transcribing';
+  const voice = s.mars !== 'idle' || s.dictation === 'listening' || s.dictation === 'transcribing';
   for (const b of ['left', 'right', 'wheel'] as const) {
     const label = s.labels[b];
     const el = $<HTMLButtonElement>(b);
@@ -165,9 +165,9 @@ function render(s: RemoteState) {
     el.classList.toggle('cancel', voice && b === 'right');
   }
   $('speed-box').classList.toggle('live', s.ui === 'scroll');
-  if (s.orion !== prev?.orion || s.orionText !== prev?.orionText) voiceLine = ORION_HINT[s.orion] ?? s.orionText;
+  if (s.mars !== prev?.mars || s.marsText !== prev?.marsText) voiceLine = MARS_HINT[s.mars] ?? s.marsText;
   if (s.dictation !== prev?.dictation || s.dictationText !== prev?.dictationText) voiceLine = DICTATION_HINT[s.dictation] ?? s.dictationText;
-  $('orion-text').textContent = voiceLine;
+  $('mars-text').textContent = voiceLine;
   prev = s;
 }
 

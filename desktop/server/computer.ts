@@ -3,7 +3,7 @@
 // Only works on an X11 session: on GNOME Wayland, xdotool reaches XWayland windows only and
 // x11grab sees a black/partial screen. checkSession() reports which one we're on.
 //
-// Orion's actions come from Gemini's computer-use tool (geminiAction): coordinates are 0-999 across
+// Mars's actions come from Gemini's computer-use tool (geminiAction): coordinates are 0-999 across
 // the screen, mapped here onto the same xdotool helpers. Screenshots are downscaled only when the
 // screen is big (1366x768 needs none); `scale` maps screenshot px back to screen px.
 

@@ -99,7 +99,7 @@ if (TIGER_URL) {
   test('Tiger: events, timeline and keyword match on what was said', async () => {
     await store!.event({ ts: T0 + 5_000, kind: 'click', x: 10, y: 20 });
     await store!.event({ ts: T0 + 9_000, kind: 'dictation', text: 'npm run build' });
-    await store!.event({ ts: T0 + 3_600_000, kind: 'orion', text: 'asked “open the budget sheet”' });
+    await store!.event({ ts: T0 + 3_600_000, kind: 'mars', text: 'asked “open the budget sheet”' });
     const tl = await new Memory(store!).timeline(T0, T0 + 60_000);
     assert.equal(tl.total, 1);
     assert.deepEqual(
@@ -107,7 +107,7 @@ if (TIGER_URL) {
       ['clicked at (10, 20)', 'dictated "npm run build"'],
     );
     const found = await store!.findEvents(['budget'], 0, Date.now(), 5);
-    assert.deepEqual(found.map((e) => e.kind), ['orion']);
+    assert.deepEqual(found.map((e) => e.kind), ['mars']);
   });
 
   test('Tiger: usage from the continuous aggregates', async () => {
@@ -117,7 +117,7 @@ if (TIGER_URL) {
     assert.equal(term?.minutes, 10);
     assert.equal(fox?.minutes, 5);
     assert.equal(u.by_hour.reduce((s, h) => s + h.clicks, 0), 1);
-    assert.equal(u.by_hour.reduce((s, h) => s + h.orion, 0), 1);
+    assert.equal(u.by_hour.reduce((s, h) => s + h.mars, 0), 1);
   });
 
   test('Tiger: tools give text, and bad input is an error', async () => {

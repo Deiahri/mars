@@ -1,8 +1,10 @@
-# Sightline: head mount
+# Sightline: the mask
 
-A 3D-printed, glasses-style frame that rests on the nose and ears and carries the [eye cams](../eyecam/) for [Sightline](../README.md).
+A 3D-printed, glasses-style frame (the mask) that rests on the nose and ears and carries the [eye cams](../eyecam/) for [Sightline](../README.md).
 
-![The face mount (face-mount-big.stl)](preview.png)
+> **Printed, not refined yet.** We've printed it, but the fit still needs work, and the [eye cams](../eyecam/) it holds don't work yet. Until they do, Sightline runs on the [phone remote](../README.md#using-it-today-the-phone-remote).
+
+![The mask (face-mount-big.stl)](preview.png)
 
 | File | What it is | Size (mm) | Print time | Filament |
 |---|---|---|---|---|
@@ -26,3 +28,8 @@ Times are Cura's estimates on our printer. Your printer will differ, so slice th
 Every face is different, and an open design means you can change the frame to fit one person. Open `face-mount.blend`, adjust it, and export a new STL.
 
 If the frame slips on the face, the eye cams move relative to the eyes and the calibration goes off, so a snug fit matters.
+
+## Next
+
+- **A snug fit** that doesn't slip on the face.
+- **Holding the cameras steady** in front of the eyes, once the eye cams work.

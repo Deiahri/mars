@@ -1,8 +1,8 @@
-// "Hey Orion": server/wake.py listens offline (Vosk, a tiny grammar) and this turns what it hears
-// into callbacks: the wake phrase starts Orion listening (the phone's OK still sends), and a spoken
-// "yes" / "no" answers Orion's question while it asks one. Built like keystroke mode (keys.ts).
+// "Hey Mars": server/wake.py listens offline (Vosk, a tiny grammar) and this turns what it hears
+// into callbacks: the wake phrase starts Mars listening (the phone's OK still sends), and a spoken
+// "yes" / "no" answers Mars's question while it asks one. Built like keystroke mode (keys.ts).
 //
-// Nothing leaves the laptop: Orion's own recorder only starts after the wake phrase.
+// Nothing leaves the laptop: Mars's own recorder only starts after the wake phrase.
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -33,7 +33,7 @@ export class WakeWord {
     this.onStatus = onStatus;
     g.__gymoteWake?.dispose();
     g.__gymoteWake = this;
-    if (!this.available) console.warn('[wake] no .venv or Vosk model: run `npm run setup:keys` for "Hey Orion"');
+    if (!this.available) console.warn('[wake] no .venv or Vosk model: run `npm run setup:keys` for "Hey Mars"');
   }
 
   get status(): KeysStatus {
@@ -52,7 +52,7 @@ export class WakeWord {
     this.sync();
   }
 
-  /** Stop hearing for a while (Orion or dictation has the mic, Orion is talking). */
+  /** Stop hearing for a while (Mars or dictation has the mic, Mars is talking). */
   suspend(s: boolean) {
     if (s === this.suspended) return;
     this.suspended = s;
@@ -109,12 +109,12 @@ export class WakeWord {
     }
     if (msg.type === 'ready') {
       this.loaded = true;
-      console.log('[wake] listening for "Hey Orion"');
+      console.log('[wake] listening for "Hey Mars"');
       this.sync();
     } else if (!this.listening) {
-      // Heard just before a suspend took effect (e.g. the tail of Orion's own voice).
+      // Heard just before a suspend took effect (e.g. the tail of Mars's own voice).
     } else if (msg.type === 'wake') {
-      console.log('[wake] heard "Hey Orion"');
+      console.log('[wake] heard "Hey Mars"');
       this.onWake();
     } else if (msg.type === 'answer') {
       console.log(`[wake] heard "${msg.yes ? 'yes' : 'no'}"`);

@@ -1,4 +1,4 @@
-"""The overlays' look: Orion night sky. Deep navy glass, starlight-blue glow, one warm accent.
+"""The overlays' look: a night sky. Deep navy glass, starlight-blue glow, one warm accent.
 
 Shared by overlay.py (the status pill) and halo.py (halo, wheel, zoom). Colors are (r, g, b) in
 0..1; pass alpha separately. Also easing and the drawing helpers both use.

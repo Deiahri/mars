@@ -1,9 +1,9 @@
-// Orion's brain: Gemini drives the desktop. A manual loop over the Interactions API with Gemini's
+// Mars's brain: Gemini drives the desktop. A manual loop over the Interactions API with Gemini's
 // computer-use tool (environment "desktop") plus our own functions, so every action passes through
 // our safety checks before xdotool runs it (server/computer.ts geminiAction).
 //
 // A conversation: Gemini keeps the transcript on its side (previous_interaction_id), so a request
-// within CONTINUE_MS of Orion's last reply simply continues it ("what's it about?", "open it").
+// within CONTINUE_MS of Mars's last reply simply continues it ("what's it about?", "open it").
 // Later requests start fresh, with earlier ones as a short text recap.
 
 import type { Backboard } from './backboard.ts';
@@ -33,9 +33,9 @@ export type AgentOpts = {
   maxSteps: number;
   /** On: ask_user + risky-action gate + mouse-takeover/corner aborts. Off: none of those interrupt the task. */
   safeMode: boolean;
-  /** Screen memory (server/memory/), when it has anything: Orion can answer from what was on screen earlier. */
+  /** Screen memory (server/memory/), when it has anything: Mars can answer from what was on screen earlier. */
   memory?: () => Memory | null;
-  /** Backboard (server/backboard.ts): Orion's long-term memory of the person, across sessions. */
+  /** Backboard (server/backboard.ts): Mars's long-term memory of the person, across sessions. */
   person?: Backboard | null;
 };
 
@@ -43,7 +43,7 @@ const CONFIRM_TIMEOUT_MS = 60_000;
 /** How many Backboard memories about the person go into each command. */
 const RECALL = 6;
 const RECAP = 5;
-/** A request this soon after Orion's last reply continues that conversation. */
+/** A request this soon after Mars's last reply continues that conversation. */
 const CONTINUE_MS = 3 * 60_000;
 /** ...unless it already has this many model turns (each request adds at least one screenshot). */
 const MAX_CONVO_TURNS = 30;
@@ -100,7 +100,7 @@ function system(w: number, h: number, safe: boolean, memory: boolean, person: bo
 - Call ask_user before sending a message, posting, buying, paying, deleting files, or anything else that can't be undone. Keep the question short.
 - If the person moves the mouse, you will be stopped; that is expected.`
     : '';
-  return `You are Orion, the voice assistant of a person who controls this computer with limited hand movement. You control the real Ubuntu desktop (GNOME on X11, ${w}x${h}) for them with the computer-use actions. They talk to you: sometimes a command ("open Firefox"), sometimes a question, sometimes just conversation.
+  return `You are Mars, the voice assistant of a person who controls this computer with limited hand movement. You control the real Ubuntu desktop (GNOME on X11, ${w}x${h}) for them with the computer-use actions. They talk to you: sometimes a command ("open Firefox"), sometimes a question, sometimes just conversation.
 
 - Commands: do them on the computer, then stop.
 - Questions and conversation: answer in one to three short spoken sentences, like a helpful friend. Only use the computer if you need it to find the answer.
@@ -181,7 +181,7 @@ export class Agent {
       const person = this.opts.person;
       if (person?.on) {
         const day = new Date().toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-        person.remember(`${day}: asked Orion “${command}” → ${summary.text}`, { kind: 'request' }).catch((e) => console.warn('[backboard]', e.message));
+        person.remember(`${day}: asked Mars “${command}” → ${summary.text}`, { kind: 'request' }).catch((e) => console.warn('[backboard]', e.message));
       }
       this.history.push({ command, summary: summary.text });
       if (this.history.length > RECAP) this.history.shift();

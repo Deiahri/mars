@@ -52,7 +52,7 @@ const g = globalThis as { __gymoteMemory?: ScreenMemory };
 export class ScreenMemory {
   enabled = false;
   readonly store: Store;
-  /** The read side, for Orion's memory tools. */
+  /** The read side, for Mars's memory tools. */
   readonly memory: Memory;
   private stats = { kept: 0, same: 0, skipped: 0, captioned: 0, failed: 0, costUsd: 0 };
   private note: string | null = null;
@@ -101,7 +101,7 @@ export class ScreenMemory {
     return null;
   }
 
-  /** Whether there is anything to remember (Orion gets the memory tools then). */
+  /** Whether there is anything to remember (Mars gets the memory tools then). */
   get hasFrames(): boolean {
     return this.total > 0;
   }

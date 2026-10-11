@@ -1,4 +1,4 @@
-// Orion's voice: ElevenLabs text-to-speech (same call as os-control-spike's /api/tts), streamed into
+// Mars's voice: ElevenLabs text-to-speech (same call as os-control-spike's /api/tts), streamed into
 // ffplay on the laptop. The server plays it itself, like it records the mic itself (server/speech.ts),
 // so it works while the control page is buried under other windows.
 
@@ -9,7 +9,7 @@ export type VoiceOpts = {
   /** ElevenLabs voice id. Default "George", a premade voice every account has. */
   voiceId: string;
   model: string;
-  /** TTS=0 in .env: Orion stays silent. */
+  /** TTS=0 in .env: Mars stays silent. */
   enabled: boolean;
 };
 
@@ -20,7 +20,7 @@ export class Voice {
   private player: ChildProcess | null = null;
   private abort: AbortController | null = null;
   private opts: VoiceOpts;
-  /** Talking now (from the request until playback ends): the "Hey Orion" listener pauses meanwhile. */
+  /** Talking now (from the request until playback ends): the "Hey Mars" listener pauses meanwhile. */
   speaking = false;
   onSpeaking: (speaking: boolean) => void = () => {};
 
@@ -70,7 +70,7 @@ export class Voice {
     }
   }
 
-  /** Switches the voice on or off (the wheel's Voice › Orion speaks). */
+  /** Switches the voice on or off (the wheel's Voice › Mars speaks). */
   setEnabled(on: boolean) {
     this.opts.enabled = on;
     if (!on) this.stop();

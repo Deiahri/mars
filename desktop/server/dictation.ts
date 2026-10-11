@@ -7,7 +7,7 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { OverlayMsg } from './orion.ts';
+import type { OverlayMsg } from './mars.ts';
 import { pcmMs, Recorder, transcribe, wav, type SttOpts } from './speech.ts';
 
 const run = promisify(execFile);

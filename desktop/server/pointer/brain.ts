@@ -80,12 +80,12 @@ export type BrainHooks = {
   rescan: () => void;
   /** A short note for the status pill. */
   info: (text: string) => void;
-  /** Mouse on and Orion not driving. */
+  /** Mouse on and Mars not driving. */
   live: () => boolean;
-  /** The wheel items the server owns: Dictate, Orion, Keys, Snap (+ AI targets). */
+  /** The wheel items the server owns: Dictate, Mars, Keys, Snap (+ AI targets). */
   menuAction: (id: string) => void;
   /** What their labels show. */
-  menuState: () => Pick<MenuState, 'ai' | 'keys' | 'wake' | 'tts' | 'orion' | 'dictate'>;
+  menuState: () => Pick<MenuState, 'ai' | 'keys' | 'wake' | 'tts' | 'mars' | 'dictate'>;
   /** A PNG (base64) of this screen region, taken with our overlay hidden; null if it failed. */
   zoomShot: (r: Rect) => Promise<string | null>;
   now?: () => number;
@@ -279,7 +279,7 @@ export class PointerBrain {
     this.hooks.onState();
   }
 
-  /** Lets go of everything held and closes the wheel, zoom and scrolling (pause, mouse off, Orion, Stop). */
+  /** Lets go of everything held and closes the wheel, zoom and scrolling (pause, mouse off, Mars, Stop). */
   stopActions() {
     if (this.dragging) this.hooks.out.button('left', false);
     this.dragging = false;
@@ -338,7 +338,7 @@ export class PointerBrain {
     this.hooks.rescan();
   }
 
-  /** What each phone button does right now (Orion and mouse-off are the server's, in plugin.ts). */
+  /** What each phone button does right now (Mars and mouse-off are the server's, in plugin.ts). */
   labels(): { left: string; right: string; wheel: string } {
     if (this.paused) return { left: '', right: '', wheel: 'Resume' };
     if (this.ui === 'wheel') return { left: 'Select', right: this.wheel?.path.length ? 'Back' : 'Close', wheel: 'Close' };
@@ -595,7 +595,7 @@ export class PointerBrain {
         return this.hooks.onState();
       }
       default:
-        return this.hooks.menuAction(id); // dictate, orion, keys, wake, tts, snap
+        return this.hooks.menuAction(id); // dictate, mars, keys, wake, tts, snap
     }
   }
 

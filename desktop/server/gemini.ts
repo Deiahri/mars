@@ -1,6 +1,6 @@
 // Gemini, over REST (no SDK): every model call in Sightline goes through here.
 //
-//   interact()       the Interactions API: Orion's agent loop (computer use on the desktop + our
+//   interact()       the Interactions API: Mars's agent loop (computer use on the desktop + our
 //                    own functions). The server keeps the conversation: pass previous_interaction_id.
 //   generateJson()   one structured-output call (an image + a prompt → JSON matching a schema):
 //                    screen-memory captions and AI snap targets.
@@ -10,7 +10,7 @@
 const BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
 export const GEMINI = {
-  /** Orion, captions and snap targets: the recommended computer-use model. */
+  /** Mars, captions and snap targets: the recommended computer-use model. */
   MODEL: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
   /** $ per token (gemini-3.8-flash, standard tier, through 2026; thinking is billed as output). */
   USD_IN: 0.75 / 1e6,

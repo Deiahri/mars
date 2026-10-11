@@ -1,5 +1,5 @@
-// Ask screen memory a question from the terminal, without the phone or Orion (which would also be
-// able to act on the desktop). Same tools Orion gets, read-only, on Gemini. From screen-memory/src/agent.ts.
+// Ask screen memory a question from the terminal, without the phone or Mars (which would also be
+// able to act on the desktop). Same tools Mars gets, read-only, on Gemini. From screen-memory/src/agent.ts.
 //
 //   npm run memory:ask -- "what was the error in my terminal earlier?"
 

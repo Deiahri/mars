@@ -1,8 +1,8 @@
-// Orion's long-term memory of the person, on Backboard (app.backboard.io): who they are, people they
-// mention, preferences and routines, and what they asked Orion before. Screen memory (server/memory/)
+// Mars's long-term memory of the person, on Backboard (app.backboard.io): who they are, people they
+// mention, preferences and routines, and what they asked Mars before. Screen memory (server/memory/)
 // remembers what was on the screen; this remembers the person, across restarts.
 //
-// Backboard keeps memories per assistant. We make one assistant for Orion and keep its id in
+// Backboard keeps memories per assistant. We make one assistant for Mars and keep its id in
 // data/backboard.json. REST only: create assistant, add memory, search memories, list (for the count).
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -51,9 +51,9 @@ export class Backboard {
     this.assistant ??= (async () => {
       if (existsSync(ID_FILE)) return (JSON.parse(readFileSync(ID_FILE, 'utf8')) as { assistant_id: string }).assistant_id;
       const r = (await this.call('POST', '/assistants', {
-        name: 'Orion: memory of the person',
+        name: 'Mars: memory of the person',
         system_prompt:
-          'Long-term memory for Orion, a voice assistant that drives the computer for a person with limited hand movement. Keep facts about the person: people they mention, preferences, routines, accounts and sites they use, and what they asked for before.',
+          'Long-term memory for Mars, a voice assistant that drives the computer for a person with limited hand movement. Keep facts about the person: people they mention, preferences, routines, accounts and sites they use, and what they asked for before.',
       })) as { assistant_id: string };
       mkdirSync(fileURLToPath(new URL('../data', import.meta.url)), { recursive: true });
       writeFileSync(ID_FILE, JSON.stringify({ assistant_id: r.assistant_id }, null, 2));

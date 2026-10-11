@@ -1,10 +1,10 @@
-"""The "Hey Orion" listener: the laptop mic → Vosk, offline, limited to "hey orion", "yes" and "no".
+"""The "Hey Mars" listener: the laptop mic → Vosk, offline, limited to "hey mars", "yes" and "no".
 
 Run by server/wake.ts with the venv's python (npm run setup:keys installs vosk and the model):
   python wake.py <model dir>
 
 Like keystroke mode (keys.py), the grammar is tiny, so the recognizer can only ever hear those
-phrases; everything else comes out as [unk]. Nothing leaves the laptop: Orion's own recorder only
+phrases; everything else comes out as [unk]. Nothing leaves the laptop: Mars's own recorder only
 starts after the wake phrase.
 
 stdin, one command per line:  on | off       (start/stop listening; the model stays loaded)
@@ -13,7 +13,7 @@ e.g. GM_WAKE_SOURCE="cat clip.pcm". GM_DEBUG_WAKE=1 also prints partial results.
 
 stdout, one JSON per line:
   {"type": "ready"}                       model loaded
-  {"type": "wake", "at": 3.1}            "hey orion" heard (partial result, held steady STABLE_CHUNKS)
+  {"type": "wake", "at": 3.1}            "hey mars" heard (partial result, held steady STABLE_CHUNKS)
   {"type": "answer", "yes": true}         a "yes"/"yeah"/"yep" or "no"/"nope" (final result)
   {"type": "error", "message": "..."}
 """
@@ -32,16 +32,18 @@ CHUNK = 1600  # bytes: 800 samples = 50 ms
 ARECORD = ["arecord", "-q", "-f", "S16_LE", "-r", str(RATE), "-c", "1", "-t", "raw",
            "--buffer-time=40000", "--period-time=10000"]
 DEBUG = bool(os.environ.get("GM_DEBUG_WAKE"))
-WAKE = "hey orion"
+WAKE = "hey mars"
 # The partial result can still change while the phrase is being said; it counts once it has held
 # for this many 50 ms chunks.
 STABLE_CHUNKS = 3
 YES = ("yes", "yeah", "yep")
 NO = ("no", "nope")
-# A grammar this small forces any speech onto the nearest phrase: "hey Ryan" came out as "hey orion",
-# "right now" as "no". Sound-alikes as decoys soak those up, so only the real phrase matches.
-DECOYS = ["hey", "hi", "ryan", "brian", "oreo", "orient", "origin", "onion", "oregon", "orange", "o", "oh",
-          "ian", "iron", "arena", "aaron", "now", "know", "say", "okay"]
+# A grammar this small forces any speech onto the nearest phrase: "hey Mark" came out as "hey mars",
+# "right now" as "no". Sound-alikes as decoys soak those up, so only the real phrase matches. They're
+# whole phrases ("hey mark", not "mark"): a two-word phrase beats two one-word entries in a row.
+DECOYS = ["hey", "hi", "hey man", "hey ma", "hey mom", "hey mark", "hey marcus", "hey max", "hey matt",
+          "hey marsh", "mars bar", "a mars", "marks", "march", "mass", "moss", "cars", "stars", "arms",
+          "o", "oh", "now", "know", "say", "okay"]
 
 out_lock = threading.Lock()
 

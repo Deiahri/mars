@@ -33,7 +33,7 @@ export type EventMsg =
   | { type: 'state'; state: RemoteState }
   | { type: 'heard'; text: string };
 
-export type OrionState = 'idle' | 'listening' | 'transcribing' | 'working' | 'confirm';
+export type MarsState = 'idle' | 'listening' | 'transcribing' | 'working' | 'confirm';
 export type KeysStatus = 'unavailable' | 'off' | 'loading' | 'on';
 /** The phone's three buttons, like the two or three switches a gaze user would have. */
 export type PhoneButton = 'left' | 'right' | 'wheel';
@@ -44,13 +44,13 @@ export type Pending = 'double' | 'triple' | 'middle' | 'drag';
 export type RemoteState = {
   mouse: boolean;
   keys: KeysStatus;
-  /** The "Hey Orion" listener (server/wake.ts). */
+  /** The "Hey Mars" listener (server/wake.ts). */
   wake: KeysStatus;
-  /** Orion says its answers out loud (server/voice.ts). */
+  /** Mars says its answers out loud (server/voice.ts). */
   tts: boolean;
-  orion: OrionState;
-  orionText: string;
-  orionMissing: string | null;
+  mars: MarsState;
+  marsText: string;
+  marsMissing: string | null;
   /** Dictation (server/dictation.ts): speech typed into the focused field. */
   dictation: 'unavailable' | 'idle' | 'listening' | 'transcribing';
   /** The last text typed, or what went wrong. */

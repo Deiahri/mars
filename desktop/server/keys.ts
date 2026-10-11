@@ -151,7 +151,7 @@ const g = globalThis as { __gymoteKeys?: KeyMode };
 
 /**
  * Runs keys.py and presses what it hears. `wanted` is the phone's toggle; `suspended` is set while
- * Orion listens or works, so the spoken command isn't typed as keys.
+ * Mars listens or works, so the spoken command isn't typed as keys.
  */
 export class KeyMode {
   readonly available = existsSync(VENV_PY) && existsSync(MODEL);

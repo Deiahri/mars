@@ -80,7 +80,7 @@ hot?.on('gm:state', (s: RemoteState) => {
   state = s;
   host?.send({ type: 'state', state: s });
   render();
-  if (s.orionText && (s.orionText !== prev?.orionText || s.orion !== prev?.orion)) log(s.orionText);
+  if (s.marsText && (s.marsText !== prev?.marsText || s.mars !== prev?.mars)) log(s.marsText);
   if (s.dictationText && s.dictationText !== prev?.dictationText) log(`Dictation: ${s.dictationText}`);
 });
 
@@ -245,7 +245,7 @@ for (const [id, d] of [['gap-down', -50], ['gap-up', 50]] as const) {
 
 // ------------------------------------------------------------------ render
 
-const ORION_TEXT: Record<RemoteState['orion'], string> = {
+const MARS_TEXT: Record<RemoteState['mars'], string> = {
   idle: 'ready',
   listening: 'listening',
   transcribing: 'transcribing',
@@ -277,8 +277,8 @@ function render() {
   $('wake-toggle').textContent = state.wake === 'off' ? 'turn on' : 'turn off';
   $('tts-toggle').textContent = state.tts ? 'voice on' : 'voice off';
   $('tts-toggle').classList.toggle('on', state.tts);
-  pill('orion', state.orionMissing ? state.orionMissing : ORION_TEXT[state.orion], state.orionMissing ? 'unavailable' : state.orion);
-  $('orion-text').textContent = state.orion === 'idle' ? '' : state.orionText;
+  pill('mars', state.marsMissing ? state.marsMissing : MARS_TEXT[state.mars], state.marsMissing ? 'unavailable' : state.mars);
+  $('mars-text').textContent = state.mars === 'idle' ? '' : state.marsText;
   pill('dictation', state.dictation === 'unavailable' ? 'needs ELEVENLABS_API_KEY' : state.dictation === 'idle' ? 'ready' : state.dictation, state.dictation === 'unavailable' ? 'unavailable' : state.dictation);
   $('dictation-text').textContent = state.dictationText;
   pill('mode', doingText(state), state.paused ? 'listening' : 'on');

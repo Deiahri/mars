@@ -45,7 +45,7 @@ for (const [name, utterances, want] of cases) {
 const p = new KeyParser();
 say(p, ['hold', 'up'], ['hold', 'left']);
 assert.deepEqual(p.releaseAll().map(show), ['keyup Up Left']);
-console.log('ok    releaseAll (keys off / Orion) lets go of everything');
+console.log('ok    releaseAll (keys off / Mars) lets go of everything');
 
 assert.deepEqual(xdotoolArgs({ kind: 'tap', key: 'Right', said: 'right' }), ['keydown', 'Right', 'sleep', '0.04', 'keyup', 'Right']);
 console.log(`ok    a tap holds the key ${TAP_HOLD_MS} ms (one xdotool call)`);

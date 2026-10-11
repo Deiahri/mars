@@ -3,7 +3,7 @@
 // - Takeover: if the cursor ends up somewhere the agent didn't put it, a human grabbed the mouse.
 //   Stop immediately (this also cancels an in-flight Gemini request).
 // - Corner: shoving the cursor into the top-left corner always stops (pyautogui's failsafe).
-// - Risky backstop: Orion is told to call ask_user before anything irreversible; this catches
+// - Risky backstop: Mars is told to call ask_user before anything irreversible; this catches
 //   the case where it forgets, by pausing a submit-like action when its own narration says it's
 //   about to send/buy/delete something.
 
@@ -75,7 +75,7 @@ function isCommit(name: string, input: Record<string, unknown>): boolean {
 }
 
 /**
- * Asks before a commit-like action when Orion's latest narration sounds irreversible and the
+ * Asks before a commit-like action when Mars's latest narration sounds irreversible and the
  * user hasn't already approved something in the last few actions.
  */
 export function needsConfirm(name: string, input: Record<string, unknown>, narration: string, approvedRecently: boolean): string | null {
