@@ -8,6 +8,7 @@
 import { Agent, type AgentEvent, type AgentOpts } from './agent.ts';
 import { Desktop } from './computer.ts';
 import { pcmMs, Recorder, transcribe, wav, type SttOpts } from './speech.ts';
+import type { Voice } from './voice.ts';
 
 export type { SttOpts } from './speech.ts';
 
@@ -19,14 +20,20 @@ const MIN_MS = 300;
 const ACTION_TEXT: Record<string, string> = {
   search_memory: 'searching memory',
   memory_timeline: 'going through memory',
+  memory_usage: 'adding up screen time',
   view_memory_screenshot: 'looking at an earlier screen',
+  remember_about_person: 'remembering that',
+  offer_next_step: 'asking you',
+  recall_about_person: 'thinking back',
 };
 
 export type OrionState = 'idle' | 'listening' | 'transcribing' | 'working' | 'confirm';
 export type OverlayMsg = {
-  state: 'listening' | 'transcribing' | 'working' | 'done' | 'error' | 'info' | 'hidden';
+  state: 'listening' | 'transcribing' | 'working' | 'confirm' | 'done' | 'error' | 'info' | 'hidden';
   level?: number;
   text?: string;
+  /** A smaller second line (confirm: how to answer). */
+  hint?: string;
 };
 
 // Vite re-runs the plugin when a server file changes: stop the old run's task and recording.
@@ -36,6 +43,8 @@ export class Orion {
   state: OrionState = 'idle';
   /** What to show under the state: the last progress note, question, or summary. */
   text = '';
+  /** Yes / no can also be said out loud ("Hey Orion" listener on): the pill says so. */
+  voiceAnswers = false;
   private rec = new Recorder();
   private capTimer: ReturnType<typeof setTimeout> | null = null;
   private desktop = new Desktop();
@@ -50,6 +59,8 @@ export class Orion {
     private overlay: (m: OverlayMsg) => void,
     /** What was asked and how it ended, for screen memory's log. */
     private log: (text: string) => void = () => {},
+    /** Says answers and questions out loud (ElevenLabs). */
+    private voice: Voice | null = null,
   ) {
     g.__gymoteOrion?.dispose();
     g.__gymoteOrion = this;
@@ -66,6 +77,7 @@ export class Orion {
 
   start() {
     if (this.state !== 'idle') return;
+    this.voice?.stop(); // never talk over the mic
     if (this.missing) return this.set('idle', `Orion is off: ${this.missing}`, { state: 'error' });
     this.rec.start(
       (level) => this.overlay({ state: 'listening', level, text: LISTENING }),
@@ -108,6 +120,7 @@ export class Orion {
   }
 
   cancel() {
+    this.voice?.stop();
     if (this.state === 'listening') {
       this.discard();
       this.set('idle', 'Cancelled.', { state: 'info', text: 'Orion cancelled' });
@@ -140,15 +153,22 @@ export class Orion {
       case 'action':
         return this.set('working', `${ACTION_TEXT[e.name] ?? e.name}${e.ok ? '' : ' (failed)'}`, { state: 'working' });
       case 'confirm':
-        return this.set('confirm', e.question, { state: 'working', text: `${e.question}  (OK = yes, Cancel = no)` });
+        void this.voice?.speak(e.question);
+        return this.set('confirm', e.question, {
+          state: 'confirm',
+          text: e.question,
+          hint: this.voiceAnswers ? 'Yes / No on the phone, or say “yes” / “no”' : 'Yes / No on the phone',
+        });
       case 'confirmed':
         return this.set('working', e.ok ? 'Going ahead.' : 'Not doing that.', { state: 'working' });
       case 'done':
         this.log(`answered “${e.summary}”`);
+        void this.voice?.speak(e.summary);
         return this.set('idle', e.summary, { state: 'done' });
       case 'stopped':
         return this.set('idle', `Stopped: ${e.reason}`, { state: 'info' });
       case 'error':
+        void this.voice?.speak('Sorry, something went wrong.');
         return this.set('idle', `Error: ${e.message}`, { state: 'error' });
     }
   }

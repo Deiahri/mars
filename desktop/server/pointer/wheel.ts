@@ -14,6 +14,10 @@ export type MenuState = {
   snap: boolean;
   ai: 'n/a' | 'on' | 'off';
   keys: 'n/a' | 'on' | 'off' | '…';
+  /** The "Hey Orion" listener (server/wake.ts). */
+  wake: 'n/a' | 'on' | 'off' | '…';
+  /** Orion's spoken answers (server/voice.ts). */
+  tts: 'n/a' | 'on' | 'off';
   /** Orion can run (API keys there). */
   orion: boolean;
   /** Dictation can run (ElevenLabs key there). */
@@ -53,7 +57,15 @@ export function buildMenu(s: MenuState): MenuItem[] {
             { id: 'dwell', label: `Dwell: ${onOff(s.dwell)}` },
             // One step for both: AI targets only matter with snapping on. off → on → on + AI.
             { id: 'snap', label: `Snap: ${!s.snap ? 'off' : s.ai === 'on' ? 'on + AI' : 'on'}` },
-            { id: 'keys', label: `Keys: ${s.keys}` },
+            {
+              id: 'voice',
+              label: 'Voice',
+              sub: [
+                { id: 'wake', label: `Hey Orion: ${s.wake}` },
+                { id: 'tts', label: `Orion speaks: ${s.tts}` },
+                { id: 'keys', label: `Keys: ${s.keys}` },
+              ],
+            },
             { id: 'zoomk', label: `Zoom: ${s.zoomK}×` },
           ],
         },

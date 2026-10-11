@@ -7,7 +7,7 @@ import { processFrame } from '../server/memory/caption.ts';
 import { Store } from '../server/memory/db.ts';
 
 const store = new Store();
-const ids = store.todo();
+const ids = await store.todo();
 console.log(`${ids.length} frame(s) to caption`);
 let cost = 0;
 let failed = 0;
@@ -22,3 +22,4 @@ for (const id of ids) {
   }
 }
 console.log(`done: ${ids.length - failed} ok, ${failed} failed, $${cost.toFixed(4)}`);
+await store.close();

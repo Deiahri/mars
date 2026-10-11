@@ -44,6 +44,10 @@ export type Pending = 'double' | 'triple' | 'middle' | 'drag';
 export type RemoteState = {
   mouse: boolean;
   keys: KeysStatus;
+  /** The "Hey Orion" listener (server/wake.ts). */
+  wake: KeysStatus;
+  /** Orion says its answers out loud (server/voice.ts). */
+  tts: boolean;
   orion: OrionState;
   orionText: string;
   orionMissing: string | null;

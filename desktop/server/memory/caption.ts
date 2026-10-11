@@ -82,18 +82,18 @@ export function cost(input: number, output: number): number {
 
 /** Caption + embed one stored frame. Errors are recorded on the row (retry with `npm run memory:caption`). */
 export async function processFrame(store: Store, id: number): Promise<{ caption: Caption; cost: number; ms: number } | { error: string }> {
-  const f = store.get(id);
+  const f = await store.get(id);
   if (!f) return { error: `no frame ${id}` };
   const t = Date.now();
   try {
     const r = await caption(readFileSync(`${DATA_DIR}/${f.path}`), f);
     const text = searchText(r.caption, f.win_title);
     const vec = await embedOne(text, 'doc');
-    store.done(id, r.caption, text, vec, r);
+    await store.done(id, r.caption, text, vec, r);
     return { caption: r.caption, cost: cost(r.input, r.output), ms: Date.now() - t };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    store.fail(id, message);
+    await store.fail(id, message).catch(() => {});
     return { error: message };
   }
 }

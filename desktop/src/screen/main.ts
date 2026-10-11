@@ -131,6 +131,7 @@ type MemoryStatus = {
   queued: number;
   costUsd: number;
   total: number;
+  keyword: 'bm25' | 'fts';
 };
 let memory: MemoryStatus | null = null;
 hot?.on('gm:memory', (m: MemoryStatus) => {
@@ -144,10 +145,15 @@ hot?.on('gm:memory', (m: MemoryStatus) => {
     m.captioned ? `${m.captioned} captioned${m.queued ? `, ${m.queued} waiting` : ''}` : '',
     m.failed ? `${m.failed} failed` : '',
     m.costUsd ? `≈ $${m.costUsd.toFixed(3)}` : '',
-    `${m.total} in memory`,
+    `${m.total} in Tiger (${m.keyword === 'bm25' ? 'BM25' : 'full-text'} + vector)`,
   ]
     .filter(Boolean)
     .join(' · ');
+});
+
+hot?.on('gm:backboard', (b: { on: boolean; count: number | null }) => {
+  if (!b.on) return pill('backboard', 'needs BACKBOARD_API_KEY', 'unavailable');
+  pill('backboard', b.count === null ? 'on' : `${b.count} memories`, 'on');
 });
 
 hot?.on('gm:heard', ({ text }: { text: string }) => {
@@ -220,6 +226,8 @@ for (const [id, d] of [['dwell-down', -100], ['dwell-up', 100]] as const) {
   });
 }
 $('mouse-toggle').addEventListener('click', () => hot?.send('gm:toggle', { what: 'mouse' }));
+$('wake-toggle').addEventListener('click', () => hot?.send('gm:toggle', { what: 'wake' }));
+$('tts-toggle').addEventListener('click', () => hot?.send('gm:toggle', { what: 'tts' }));
 $('dwell').addEventListener('click', () => hot?.send('gm:toggle', { what: 'dwell' }));
 $('snap').addEventListener('click', () => hot?.send('gm:toggle', { what: 'snap' }));
 $('ai').addEventListener('click', () => hot?.send('gm:toggle', { what: 'ai' }));
@@ -265,6 +273,10 @@ function render() {
   pill('mouse', state.mouse ? 'on' : 'off', state.mouse ? 'on' : 'off');
   $('mouse-toggle').textContent = state.mouse ? 'turn off' : 'turn on';
   pill('keys', state.keys === 'unavailable' ? 'run npm run setup:keys' : state.keys, state.keys);
+  pill('wake', state.wake === 'unavailable' ? 'run npm run setup:keys' : state.wake === 'on' ? 'listening' : state.wake, state.wake);
+  $('wake-toggle').textContent = state.wake === 'off' ? 'turn on' : 'turn off';
+  $('tts-toggle').textContent = state.tts ? 'voice on' : 'voice off';
+  $('tts-toggle').classList.toggle('on', state.tts);
   pill('orion', state.orionMissing ? state.orionMissing : ORION_TEXT[state.orion], state.orionMissing ? 'unavailable' : state.orion);
   $('orion-text').textContent = state.orion === 'idle' ? '' : state.orionText;
   pill('dictation', state.dictation === 'unavailable' ? 'needs ELEVENLABS_API_KEY' : state.dictation === 'idle' ? 'ready' : state.dictation, state.dictation === 'unavailable' ? 'unavailable' : state.dictation);

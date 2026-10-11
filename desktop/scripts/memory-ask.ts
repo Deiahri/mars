@@ -53,6 +53,7 @@ for (let step = 1; step <= MAX_STEPS; step++) {
   if (msg.stop_reason === 'pause_turn') continue;
   if (msg.stop_reason !== 'tool_use') {
     console.log(`\n${msg.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n').trim() || '(no answer)'}`);
+    await mem.store.close();
     process.exit(0);
   }
 

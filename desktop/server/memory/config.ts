@@ -9,7 +9,8 @@ if (existsSync(envFile)) process.loadEnvFile(envFile);
 const env = process.env;
 
 export const DATA_DIR = fileURLToPath(new URL('../../data/memory', import.meta.url));
-export const DB_PATH = `${DATA_DIR}/memory.db`;
+/** Tiger Cloud service (Postgres + TimescaleDB + pgvector): captions, embeddings and the action log. Screenshots stay in DATA_DIR. */
+export const TIGER_URL = env.TIGER_DATABASE_URL || undefined;
 /** `touch data/memory/PAUSE` pauses recording even while it's switched on; delete it to resume. */
 export const PAUSE_FILE = `${DATA_DIR}/PAUSE`;
 
@@ -19,7 +20,7 @@ export const DIFF_THRESHOLD = Number(env.MEMORY_DIFF_THRESHOLD ?? 4);
 /** Window titles matching this (case-insensitive) are never saved or sent anywhere. Chat apps too: their messages are someone else's. */
 export const PRIVATE_TITLES = new RegExp(
   env.MEMORY_PRIVATE_TITLES ??
-    'password|bitwarden|1password|keepass|incognito|private browsing|bank|discord|slack|signal|whatsapp|messenger|telegram',
+    'password|bitwarden|1password|keepass|incognito|private browsing|bank|discord|slack|signal|whatsapp|messenger|telegram|\\.env\\b|secret|credential|api key',
   'i',
 );
 

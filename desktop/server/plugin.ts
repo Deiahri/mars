@@ -10,7 +10,7 @@
 //                   gm:pointer-reset {what: offset|adaptive}
 //                   gm:button {button, down}         the phone's Left / Right / Menu (left|right|wheel)
 //                   gm:scroll-speed {perS}           the phone's scroll speed slider
-//                   gm:toggle {what: mouse|keys|dwell|snap|ai}
+//                   gm:toggle {what: mouse|keys|wake|tts|dwell|snap|ai}
 //                   gm:orion {action: start|ok|cancel}
 //                   gm:dictate {action: start|ok|cancel}
 //                   gm:keys-gap {ms}                 minimum time between keystroke-mode taps
@@ -18,6 +18,7 @@
 //                   gm:stop                          the page's Stop / Esc: everything off
 //   server → page   gm:hello {w, h, session, warning?, token}
 //                   gm:memory MemoryStatus           5×/s with gm:pointer
+//                   gm:backboard {on, count}         Orion's long-term memory of the person (server/backboard.ts)
 //                   gm:state RemoteState             mouse / keys / Orion / pointer ui / button labels, forwarded to the phone
 //                   gm:pointer PointerStatus + {ai}  5×/s, for the page's readouts (ai: VisionStatus)
 //                   gm:heard {text}                  a keystroke-mode word that was acted on
@@ -36,11 +37,14 @@ import { promisify } from 'node:util';
 import type { Plugin, ViteDevServer, WebSocketAlias as WebSocket } from 'vite';
 import type { PhoneButton, RemoteState } from '../src/net/link.ts';
 import type { AgentOpts } from './agent.ts';
+import { Backboard } from './backboard.ts';
 import { Desktop } from './computer.ts';
 import { Dictation } from './dictation.ts';
 import { hostEnv } from './env.ts';
 import { KeyMode } from './keys.ts';
 import { ScreenMemory } from './memory/recorder.ts';
+import { Voice, type VoiceOpts } from './voice.ts';
+import { WakeWord } from './wake.ts';
 import { Orion, type OverlayMsg, type SttOpts } from './orion.ts';
 import { PointerBrain } from './pointer/brain.ts';
 import type { Target } from './pointer/snap.ts';
@@ -52,6 +56,12 @@ const run = promisify(execFile);
 export type DesktopOpts = {
   agent: AgentOpts;
   stt: SttOpts;
+  /** Orion's spoken answers (ElevenLabs TTS). */
+  voice: VoiceOpts;
+  /** "Hey Orion" listening on at start (server/wake.ts). */
+  wake: boolean;
+  /** Backboard: Orion's long-term memory of the person. Off without a key. */
+  backboardKey?: string;
   hasClaude: boolean;
   /** AI snap targets (server/vision-targets.ts) on at start. Needs hasClaude. */
   aiSnap: boolean;
@@ -240,11 +250,13 @@ export function desktop(opts: DesktopOpts): Plugin {
           if (id === 'dictate') startVoice('dictate');
           else if (id === 'orion') startVoice('orion');
           else if (id === 'snap') cycleSnap();
-          else if (id === 'keys' || id === 'ai') toggle(id);
+          else if (id === 'keys' || id === 'ai' || id === 'wake' || id === 'tts') toggle(id);
         },
         menuState: () => ({
           ai: !vision.available ? 'n/a' : vision.enabled ? 'on' : 'off',
           keys: keys.status === 'unavailable' ? 'n/a' : keys.status === 'loading' ? '…' : keys.status,
+          wake: wake.status === 'unavailable' ? 'n/a' : wake.status === 'loading' ? '…' : wake.status,
+          tts: !voice.on && voice.enabled ? 'n/a' : voice.enabled ? 'on' : 'off',
           orion: !orion.missing,
           dictate: !dictation.missing,
         }),
@@ -306,6 +318,8 @@ export function desktop(opts: DesktopOpts): Plugin {
       const state = (): RemoteState => ({
         mouse,
         keys: keys.status,
+        wake: wake.status,
+        tts: voice.on,
         orion: orion.state,
         orionText: orion.text,
         orionMissing: orion.missing,
@@ -342,25 +356,66 @@ export function desktop(opts: DesktopOpts): Plugin {
       );
       /** Keystroke mode pauses while Orion or dictation has the mic. */
       const micBusy = () => orion.state !== 'idle' || dictation.state !== 'idle';
-      const agentOpts = { ...opts.agent, memory: () => (screenMemory.hasFrames ? screenMemory.memory : null) };
+      const person = new Backboard(opts.backboardKey);
+      if (person.on) person.refreshCount().catch((e) => console.warn('[backboard]', (e as Error).message));
+      const agentOpts = { ...opts.agent, memory: () => (screenMemory.hasFrames ? screenMemory.memory : null), person };
+      const voice = new Voice(opts.voice);
       const orion = new Orion(agentOpts, opts.stt, opts.hasClaude, () => {
         // Orion owns the mic and the mouse while it listens and works.
         keys.suspend(micBusy());
+        updateWake();
         if (orion.state !== 'idle') {
           brain.stopActions();
           pointer.releaseAll();
         }
         pushState();
-      }, overlay, (text) => screenMemory.event('orion', { text }));
+      }, overlay, (text) => screenMemory.event('orion', { text }), voice);
       // Dictation only takes the mic; the pointer keeps moving, its clicks wait (the router below).
       const dictation = new Dictation(opts.stt, () => {
         keys.suspend(micBusy());
+        updateWake();
         pushState();
       }, overlay, (text) => screenMemory.event('dictation', { text }));
+      // "Hey Orion" (offline): starts Orion listening, like the wheel's Orion; the phone's OK still
+      // sends. While Orion asks a yes/no question, a spoken "yes" / "no" answers it.
+      const wake = new WakeWord(
+        () => {
+          if (orion.state !== 'idle' || dictation.state !== 'idle') return;
+          voice.chime();
+          startVoice('orion');
+        },
+        (yes) => {
+          if (orion.state !== 'confirm') return;
+          if (yes) void orion.ok();
+          else orion.cancel();
+        },
+        () => {
+          orion.voiceAnswers = wake.status === 'on';
+          pushState();
+        },
+      );
+      /** Orion's voice and the recorders would otherwise be heard as "Hey Orion" / "yes". */
+      let quietTimer: ReturnType<typeof setTimeout> | null = null;
+      const updateWake = () => {
+        const busy = orion.state === 'listening' || orion.state === 'transcribing' || dictation.state !== 'idle';
+        if (busy || voice.speaking) {
+          if (quietTimer) clearTimeout(quietTimer);
+          quietTimer = null;
+          return wake.suspend(true);
+        }
+        // The room's echo of Orion's last word: wait a moment before listening again.
+        quietTimer ??= setTimeout(() => {
+          quietTimer = null;
+          wake.suspend(false);
+        }, 300);
+      };
+      voice.onSpeaking = () => updateWake();
+      if (opts.wake) wake.set(true);
       /** One voice thing at a time: they share the mic and the phone's buttons. */
       const startVoice = (what: 'orion' | 'dictate') => {
         if (micBusy()) return overlay({ state: 'info', text: `Busy: finish ${orion.state !== 'idle' ? 'Orion' : 'dictation'} first` });
         brain.stopActions();
+        voice.stop();
         if (what === 'orion') orion.start();
         else dictation.start();
       };
@@ -373,6 +428,7 @@ export function desktop(opts: DesktopOpts): Plugin {
       const statusTimer = setInterval(() => {
         toPage('gm:pointer', { ...brain.status(), ai: vision.status() });
         toPage('gm:memory', screenMemory.status());
+        toPage('gm:backboard', { on: person.on, count: person.count });
       }, 200);
       server.httpServer?.on('close', () => {
         clearInterval(statusTimer);
@@ -382,6 +438,9 @@ export function desktop(opts: DesktopOpts): Plugin {
         orion.dispose();
         dictation.dispose();
         screenMemory.dispose();
+        voice.stop();
+        wake.dispose();
+        if (quietTimer) clearTimeout(quietTimer);
       });
 
       // ------------------------------------------------------------ handlers
@@ -437,7 +496,7 @@ export function desktop(opts: DesktopOpts): Plugin {
       on<{ perS: number }>('gm:scroll-speed', ({ perS }) => {
         if (finite(perS)) brain.setScrollSpeed(perS);
       });
-      const toggle = (what: 'mouse' | 'keys' | 'dwell' | 'snap' | 'ai') => {
+      const toggle = (what: 'mouse' | 'keys' | 'wake' | 'tts' | 'dwell' | 'snap' | 'ai') => {
         if (what === 'mouse') {
           mouse = !mouse;
           if (!mouse) pointer.releaseAll();
@@ -450,6 +509,17 @@ export function desktop(opts: DesktopOpts): Plugin {
           }
           keys.set(!keys.on);
           overlay({ state: 'info', text: keys.on ? '⌨  Keys on: say left, hold up, stop up…' : '⌨  Keys off' });
+        } else if (what === 'wake') {
+          if (wake.status === 'unavailable') {
+            overlay({ state: 'error', text: '“Hey Orion” needs `npm run setup:keys`' });
+            return;
+          }
+          wake.set(!wake.on);
+          overlay({ state: 'info', text: wake.on ? '✦  Listening for “Hey Orion” (offline)' : '✦  “Hey Orion” off' });
+        } else if (what === 'tts') {
+          voice.setEnabled(!voice.enabled);
+          overlay({ state: 'info', text: voice.enabled ? 'Orion speaks its answers' : 'Orion stays quiet' });
+          pushState();
         } else if (what === 'dwell') {
           brain.toggleDwell();
         } else if (what === 'snap') {
@@ -465,7 +535,7 @@ export function desktop(opts: DesktopOpts): Plugin {
           pushState();
         }
       };
-      on<{ what: 'mouse' | 'keys' | 'dwell' | 'snap' | 'ai' }>('gm:toggle', ({ what }) => toggle(what));
+      on<{ what: 'mouse' | 'keys' | 'wake' | 'tts' | 'dwell' | 'snap' | 'ai' }>('gm:toggle', ({ what }) => toggle(what));
       on<{ action: 'start' | 'ok' | 'cancel' }>('gm:orion', ({ action }) => {
         if (action === 'start') startVoice('orion');
         else if (action === 'ok') void orion.ok();
@@ -485,15 +555,16 @@ export function desktop(opts: DesktopOpts): Plugin {
         brain.stop();
         pointer.releaseAll();
         keys.set(false);
+        wake.set(false);
         orion.cancel();
         dictation.cancel();
         void screenMemory.setEnabled(false);
-        overlay({ state: 'info', text: 'Stopped: phone mouse, keys, Orion, dictation and screen memory are off' });
+        overlay({ state: 'info', text: 'Stopped: phone mouse, keys, “Hey Orion”, Orion, dictation and screen memory are off' });
         pushState();
       });
 
       console.log(
-        `[gymote-desktop] screen ${w}×${h} (${session.type}); keys ${keys.status}; Orion ${orion.missing ?? 'ready'}; dictation ${dictation.missing ?? 'ready'}; AI targets ${vision.available ? (vision.enabled ? 'on' : 'off') : 'need ANTHROPIC_API_KEY'}; screen memory ${screenMemory.missing ?? (opts.memory ? 'on' : 'off')}`,
+        `[gymote-desktop] screen ${w}×${h} (${session.type}); keys ${keys.status}; Orion ${orion.missing ?? 'ready'}; dictation ${dictation.missing ?? 'ready'}; voice ${voice.on ? 'on' : 'off'}; Hey Orion ${wake.status}; Backboard ${person.on ? 'on' : 'needs BACKBOARD_API_KEY'}; AI targets ${vision.available ? (vision.enabled ? 'on' : 'off') : 'need ANTHROPIC_API_KEY'}; screen memory ${screenMemory.missing ?? (opts.memory ? 'on' : 'off')}`,
       );
     },
   };

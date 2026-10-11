@@ -7,7 +7,7 @@
 
 import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { processFrame } from './caption.ts';
-import { DATA_DIR, DIFF_THRESHOLD, INTERVAL_S, OLLAMA_URL, EMBED_MODEL, PAUSE_FILE, PRIVATE_TITLES, localTime } from './config.ts';
+import { DATA_DIR, DIFF_THRESHOLD, INTERVAL_S, OLLAMA_URL, EMBED_MODEL, PAUSE_FILE, PRIVATE_TITLES, TIGER_URL, localTime } from './config.ts';
 import { type EventKind, Store } from './db.ts';
 import { Memory } from './memory.ts';
 import { activeWindow, grab, pointerMask, thumbDiff } from './screen.ts';
@@ -35,6 +35,8 @@ export type MemoryStatus = {
   costUsd: number;
   /** Frames in the database (all sessions). */
   total: number;
+  /** Which keyword search Tiger has: BM25 (pg_textsearch) or Postgres full-text. */
+  keyword: 'bm25' | 'fts';
 };
 
 export type MemoryHooks = {
@@ -61,21 +63,39 @@ export class ScreenMemory {
   private queue: number[] = [];
   private draining: Promise<void> | null = null;
   private disposed = false;
+  /** Frames in the database, kept here so status() stays synchronous. */
+  private total = 0;
+  private dbError: string | null = null;
+  private size: [number, number];
+  private hooks: MemoryHooks;
+  private opts: { hasClaude: boolean; session: string };
 
-  constructor(
-    private size: [number, number],
-    private hooks: MemoryHooks,
-    private opts: { hasClaude: boolean; session: string },
-  ) {
+  constructor(size: [number, number], hooks: MemoryHooks, opts: { hasClaude: boolean; session: string }) {
+    this.size = size;
+    this.hooks = hooks;
+    this.opts = opts;
     g.__gymoteMemory?.dispose();
     g.__gymoteMemory = this;
     this.store = new Store();
     this.memory = new Memory(this.store);
+    if (TIGER_URL) {
+      this.store.ready
+        .then(async () => {
+          this.total = await this.store.count();
+          console.log(`[memory] Tiger: ${this.total} frames, ${this.store.keyword === 'bm25' ? 'BM25' : 'full-text'} + vector search`);
+        })
+        .catch((e) => {
+          this.dbError = `Tiger database: ${(e as Error).message.slice(0, 120)}`;
+          console.warn(`[memory] ${this.dbError}`);
+        });
+    }
   }
 
   /** Why it can't record at all, or null. */
   get missing(): string | null {
     if (!this.opts.hasClaude) return 'needs ANTHROPIC_API_KEY in .env';
+    if (!TIGER_URL) return 'needs TIGER_DATABASE_URL in .env';
+    if (this.dbError) return this.dbError;
     if (this.opts.session !== 'x11') return 'needs an X11 session';
     if (!this.size[0]) return 'no screen size (xdotool)';
     return null;
@@ -83,7 +103,7 @@ export class ScreenMemory {
 
   /** Whether there is anything to remember (Orion gets the memory tools then). */
   get hasFrames(): boolean {
-    return !!this.store.last();
+    return this.total > 0;
   }
 
   async setEnabled(on: boolean): Promise<void> {
@@ -103,7 +123,7 @@ export class ScreenMemory {
   /** Something the person did. Only logged while recording, like the screen itself. */
   event(kind: EventKind, e: { x?: number | null; y?: number | null; text?: string } = {}) {
     if (!this.recording) return;
-    this.store.event({ ts: Date.now(), kind, ...e });
+    this.store.event({ ts: Date.now(), kind, ...e }).catch((err) => console.warn('[memory] event:', (err as Error).message));
     if (kind === 'click') this.afterClick();
   }
 
@@ -119,7 +139,8 @@ export class ScreenMemory {
       failed: s.failed,
       queued: this.queue.length,
       costUsd: s.costUsd,
-      total: (this.store.db.prepare('select count(*) as n from frames').get() as { n: number }).n,
+      total: this.total,
+      keyword: this.store.keyword,
     };
   }
 
@@ -128,6 +149,7 @@ export class ScreenMemory {
     this.enabled = false;
     this.cancelTimers();
     this.queue = [];
+    void this.store.close().catch(() => {});
   }
 
   private get recording(): boolean {
@@ -185,20 +207,21 @@ export class ScreenMemory {
     const p = this.hooks.pointer();
     const thumb = await grab(`${DATA_DIR}/${rel}`, this.size);
 
-    const prev = this.store.last();
+    const prev = await this.store.last();
     // The halo is drawn around the pointer in both thumbnails: neither spot counts.
     const mask = pointerMask(p, POINTER_MASK_PX, this.size);
     if (prev?.px != null && prev.py != null) for (const i of pointerMask({ x: prev.px, y: prev.py }, POINTER_MASK_PX, this.size)) mask.add(i);
     const diff = prev ? thumbDiff(thumb, prev.thumb, mask) : Infinity;
     if (prev && diff < DIFF_THRESHOLD && win.title === prev.win_title) {
       unlinkSync(`${DATA_DIR}/${rel}`);
-      this.store.touch(prev.id, now);
+      await this.store.touch(prev.id, now);
       this.stats.same++;
       return;
     }
 
-    const id = this.store.insert({ ts: now, path: rel, win_title: win.title, win_class: win.cls, px: p?.x ?? null, py: p?.y ?? null, thumb });
+    const id = await this.store.insert({ ts: now, path: rel, win_title: win.title, win_class: win.cls, px: p?.x ?? null, py: p?.y ?? null, thumb });
     this.stats.kept++;
+    this.total++;
     console.log(`[memory] kept #${id} (diff ${Number.isFinite(diff) ? diff.toFixed(1) : 'first'}) ${win.cls || '?'}: ${win.title}`);
     if (this.queue.length < MAX_QUEUE) this.enqueue(id);
   }

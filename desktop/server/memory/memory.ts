@@ -1,13 +1,10 @@
-// The read side of screen memory: search(), timeline(), getFrame(), image(). Orion's agent reaches
-// these through server/memory/tools.ts. Ported from screen-memory/src/memory.ts.
-//
-// Search is brute-force cosine over every embedding (cached in memory; 50k × 768 floats is a few
-// ms) plus a keyword boost, since node:sqlite has no FTS5 and exact strings like filenames or
-// error codes are what people often search for.
+// The read side of screen memory: search(), timeline(), usage(), getFrame(), image(). Orion's agent
+// reaches these through server/memory/tools.ts. Ported from screen-memory/src/memory.ts; the search
+// itself now runs in Tiger (server/memory/db.ts `hybrid`).
 
 import { readFileSync } from 'node:fs';
 import { DATA_DIR, localTime } from './config.ts';
-import { type Frame, type MemEvent, Store } from './db.ts';
+import { type Frame, type MemEvent, Store, type Usage } from './db.ts';
 import { embedOne } from './embed.ts';
 import { crop, screenSize } from './screen.ts';
 
@@ -28,8 +25,6 @@ export type Did = { at: string; did: string };
 
 export type SearchOpts = { k?: number; since?: number; until?: number; app?: string };
 
-const KEYWORD_WEIGHT = 0.15;
-
 export function words(s: string): string[] {
   return [...new Set(s.toLowerCase().split(/[^\p{L}\p{N}_.\-/]+/u).filter((w) => w.length >= 3))];
 }
@@ -44,7 +39,7 @@ export function summarize(f: Frame, score = 0): Hit {
     activity: f.caption?.activity ?? (f.status === 'pending' ? '(not captioned yet)' : `(caption failed: ${f.error})`),
     ...(f.caption?.pointer_on ? { pointer_on: f.caption.pointer_on } : {}),
     key_text: f.caption?.key_text ?? [],
-    score: Math.round(score * 1000) / 1000,
+    score: Math.round(score * 10000) / 10000,
   };
 }
 
@@ -54,79 +49,49 @@ export function describeEvent(e: MemEvent): Did {
   return { at: localTime(e.ts), did };
 }
 
-type Entry = { vec: Float32Array; text: string; ts: number; last_seen: number; who: string };
-
 export class Memory {
   store: Store;
-  private cache = new Map<number, Entry>();
 
   constructor(store = new Store()) {
     this.store = store;
   }
 
-  /** Pull in rows captioned since the last call (including backfilled old ones). */
-  private refresh(): void {
-    for (const id of this.store.doneIds()) {
-      if (this.cache.has(id)) continue;
-      const f = this.store.get(id);
-      const vec = this.store.embedding(id);
-      if (!f || !vec) continue;
-      this.cache.set(id, {
-        vec,
-        text: (f.text ?? '').toLowerCase(),
-        ts: f.ts,
-        last_seen: f.last_seen,
-        who: `${f.win_title} ${f.win_class} ${f.caption?.app ?? ''}`.toLowerCase(),
-      });
-    }
-  }
-
   async search(query: string, opts: SearchOpts = {}): Promise<{ frames: Hit[]; did: Did[] }> {
-    this.refresh();
     const q = await embedOne(query, 'query');
-    const terms = words(query);
-    const since = opts.since ?? -Infinity;
-    const until = opts.until ?? Infinity;
-    const app = opts.app?.toLowerCase();
-
-    const scored: { id: number; score: number }[] = [];
-    for (const [id, e] of this.cache) {
-      if (e.last_seen < since || e.ts > until) continue;
-      if (app && !e.who.includes(app)) continue;
-      let dot = 0;
-      for (let i = 0; i < q.length; i++) dot += q[i] * e.vec[i];
-      const kw = terms.length ? terms.filter((t) => e.text.includes(t)).length / terms.length : 0;
-      scored.push({ id, score: dot + KEYWORD_WEIGHT * kw });
-    }
-    scored.sort((a, b) => b.score - a.score);
-    const frames = scored.slice(0, opts.k ?? 8).map((s) => summarize(this.store.get(s.id)!, s.score));
+    const ranked = await this.store.hybrid(query, q, { since: opts.since, until: opts.until, app: opts.app, k: opts.k ?? 8 });
+    const frames = (await Promise.all(ranked.map(async (r) => [await this.store.get(r.id), r.score] as const)))
+      .filter((x): x is readonly [Frame, number] => !!x[0])
+      .map(([f, score]) => summarize(f, score));
     // What was said (dictation, Orion commands) is matched by keyword only; it's short and exact.
-    const did = this.store
-      .findEvents(terms, Number.isFinite(since) ? since : 0, Number.isFinite(until) ? until : Date.now() + 1, 5)
-      .map(describeEvent);
+    const did = (await this.store.findEvents(words(query), opts.since ?? 0, opts.until ?? Date.now() + 1000, 5)).map(describeEvent);
     return { frames, did };
   }
 
   /** What was on screen between two times, oldest first, evenly thinned to at most `limit` frames, plus what the person did. */
-  timeline(since: number, until: number, limit = 40): { frames: Hit[]; total: number; did: Did[] } {
-    const all = this.store.range(since, until);
+  async timeline(since: number, until: number, limit = 40): Promise<{ frames: Hit[]; total: number; did: Did[] }> {
+    const all = await this.store.range(since, until);
     const step = Math.max(1, all.length / limit);
     const picked: Frame[] = [];
     for (let i = 0; i < all.length && picked.length < limit; i += step) picked.push(all[Math.floor(i)]);
-    const events = this.store.events(since, until);
+    const events = await this.store.events(since, until);
     // Clicks can be many; keep the most recent ones.
     const clicks = new Set(events.filter((e) => e.kind === 'click').slice(-60));
     const did = events.filter((e) => e.kind !== 'click' || clicks.has(e)).map(describeEvent);
     return { frames: picked.map((f) => summarize(f)), total: all.length, did };
   }
 
-  getFrame(id: number): Frame | undefined {
+  /** Screen time per app and actions per hour (Tiger continuous aggregates). */
+  usage(since: number, until: number): Promise<Usage> {
+    return this.store.usage(since, until);
+  }
+
+  getFrame(id: number): Promise<Frame | undefined> {
     return this.store.get(id);
   }
 
   /** The stored screenshot, or a region of it ([x0, y0, x1, y1] in its pixels), enlarged to screen size. */
   async image(id: number, region?: number[]): Promise<{ data: Buffer; media_type: 'image/jpeg' | 'image/png' }> {
-    const f = this.store.get(id);
+    const f = await this.store.get(id);
     if (!f) throw new Error(`no frame ${id}`);
     const path = `${DATA_DIR}/${f.path}`;
     if (!region) return { data: readFileSync(path), media_type: 'image/jpeg' };

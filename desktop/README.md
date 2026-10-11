@@ -81,7 +81,8 @@ The phone stands in for eye gaze, so the pointer follows gaze-UX practice: calm,
 | **Wheel** | **Zoom** | Click › | **Scroll** | More › |
 | Click › | Double click | Drag & drop | Triple click | Middle click |
 | More › | **Dictate** | Orion | Settings › | Pause |
-| More › Settings › | Dwell on/off | Snap: off → on → on + AI | Keys on/off | Zoom 2× / 3× / 4× |
+| More › Settings › | Dwell on/off | Snap: off → on → on + AI | Voice › | Zoom 2× / 3× / 4× |
+| … Settings › Voice › | Hey Orion on/off | Orion speaks on/off | Keys on/off | |
 
 **Zoom-click** (`zoom.ts`): a frozen snapshot of the area around the pointer pops up 3× bigger (about two-thirds of the screen). Pointing inside it is 3× finer, and the real pointer follows underneath. **Left** or **Right** clicks the real spot under the halo and the panel closes; **Menu** cancels. After the click the pointer stays on the clicked spot until you move, so it doesn't jump to where the phone points. While a button is held, the real pointer moves in steps of at most 12 px and none are dropped: apps need a stream of small motions to carry a drag (see "Drag & drop: why small steps" below). The snapshot is frozen on purpose: nothing moves under your eye, as in eye-gaze zoom tools. It works with the click types too: pick Drag & drop, zoom, click to grab; zoom again, click to drop.
 
@@ -143,21 +144,39 @@ This is os-control-spike's agent: ElevenLabs Scribe turns your speech into text,
 - The recording only goes to Claude when you press **OK**. If you never press it, the recording is thrown away after 60 s.
 - With `SAFE_MODE=1` in `.env`, Claude asks before risky actions. Answer on the phone: **Yes** is the OK button, **No** is Cancel.
 - With [screen memory](#screen-memory) on, Orion can also answer questions about earlier ("what was the error in my terminal earlier?") and find things to go back to ("reopen the page I was reading before lunch").
+- **"Hey Orion".** Say it, wait for the soft two-note chime, say what you want, then press **OK** on the phone (same as Menu › More › Orion). It's heard offline by Vosk (`server/wake.py` + `wake.ts`, the same engine as keystroke mode), with a tiny grammar plus sound-alike decoys ("hey Ryan", "Oreo", "now"…) so near-misses don't trigger it; nothing leaves the laptop until you press OK. Pause briefly after "Hey Orion": the recorder starts ~0.3 s after it. On at start (`WAKE=0` turns it off); toggles on the control page and in Settings › Voice ›. It pauses while Orion or dictation records and while Orion is talking, so it never hears itself. Needs `npm run setup:keys`.
+- **A conversation, not just commands.** Ask a question and Orion answers in a sentence or three. When there's an obvious next step ("Your essay is due Friday. Want me to open it?") it offers it: **Yes / No** on the phone, or just say "yes" / "no". Yes and it does it right away. Anything you say within 3 minutes of its last answer continues the same conversation, so "what's it about?" or "open it" knows what "it" is.
+- **Orion talks back.** Answers, yes/no questions and errors are read aloud with ElevenLabs text-to-speech (`server/voice.ts`), streamed into `ffplay` on the laptop. It stops when Orion or dictation starts listening, so it never talks over the mic. Set `ELEVENLABS_VOICE_ID` to change the voice (default: George), or `TTS=0` to keep it silent.
+
+## Orion remembers you (Backboard)
+
+Screen memory remembers what was on the screen. **Backboard** (`server/backboard.ts`) remembers *the person*, across restarts: people they mention, preferences, routines, and what they asked before.
+
+- Before each command, the most relevant memories are looked up (Backboard's semantic memory search) and handed to Claude ("What you know about this person"). That's how "message my sister" can work.
+- Claude has two tools: `remember_about_person` (it saves things like "their sister is Ana" or "they like zoom at 4×", and anything you ask it to remember) and `recall_about_person`.
+- Every finished request is saved as a memory too ("Sat 9:14 AM: asked Orion “…” → …"), so the next session knows what you did before.
+- One Backboard assistant holds them all. Its id is kept in `data/backboard.json`. The control page shows how many memories there are.
+- Needs `BACKBOARD_API_KEY` in `.env` (app.backboard.io; new accounts get $5 of credit). Without it, Orion works as before.
 
 ## Screen memory
 
-Orion remembers what was on the screen, so you can ask about it later. This is the screen-memory spike merged in (`server/memory/`).
+Orion remembers what was on the screen, so you can ask about it later. This is the screen-memory spike merged in (`server/memory/`), with its database on **Tiger Data** (Tiger Cloud: Postgres + TimescaleDB + pgvector + BM25).
 
 - **Recording.** Every 10 s, plus about a second after each click, the screen is grabbed. It's kept only if it changed. The halo moving around doesn't count as a change, and neither do the wheel or the zoom panel. Kept frames are captioned by Claude Haiku 5.5 (app, activity, what the pointer was on, verbatim text) and embedded locally with Ollama (`embeddinggemma`). The cost is about $0.0005 a frame, and an idle screen keeps nothing.
-- **Asking.** Menu › More › Orion, then ask out loud. Orion gets three extra tools: `search_memory` (meaning + keywords), `memory_timeline` (what happened between two times) and `view_memory_screenshot` (re-opens the real screenshot, zoomed if needed, before quoting exact text). Your clicks, dictation and earlier Orion commands are logged too, so "what did I dictate into that email?" works. For a question about the past it answers from memory without touching the desktop.
+- **Stored in Tiger.** Screenshots stay on this laptop (`data/memory/shots/`). Their captions, embeddings and the action log go to Tiger Cloud:
+  - `frames` and `events` are **hypertables** on time.
+  - Captions are embedded with **pgvector** (HNSW, cosine) and indexed with **BM25** (`pg_textsearch`; plain Postgres full-text search if that extension isn't there).
+  - `search_memory` is one SQL query that ranks by meaning and by exact words, then fuses the two rankings (reciprocal rank fusion). So "TS2345" finds the exact error, and "something to cook" finds the recipe.
+  - Two **continuous aggregates** (`activity_15m`, `events_15m`) keep screen time per app and clicks/dictations/Orion requests per 15 minutes up to date. They answer "how long was I on YouTube today?" or "when did I click the most?", which is also something a therapist could track over weeks.
+- **Asking.** Menu › More › Orion, then ask out loud. Orion gets four extra tools: `search_memory` (meaning + keywords), `memory_timeline` (what happened between two times), `memory_usage` (screen time and activity from the continuous aggregates) and `view_memory_screenshot` (re-opens the real screenshot, zoomed if needed, before quoting exact text). Your clicks, dictation and earlier Orion commands are logged too, so "what did I dictate into that email?" works. For a question about the past it answers from memory without touching the desktop.
 - **Off at start.** Use the control page's **Screen memory** button, or `MEMORY=1` in `.env` to start recording with the server. **Stop everything** turns it off too.
 - **Privacy.**
-  - Kept frames are sent to Anthropic to be captioned. Screenshots, captions and the log otherwise stay in `data/memory/`.
-  - Windows whose title matches `MEMORY_PRIVATE_TITLES` are never saved. By default that covers password managers, private browsing, "bank", and chat apps (Discord, Slack, Signal, WhatsApp, Messenger, Telegram).
+  - Kept frames are sent to Anthropic to be captioned. Captions, embeddings and the action log are stored in your Tiger Cloud service; screenshots never leave the laptop.
+  - Windows whose title matches `MEMORY_PRIVATE_TITLES` are never saved. By default that covers password managers, private browsing, "bank", chat apps (Discord, Slack, Signal, WhatsApp, Messenger, Telegram), and editors showing `.env`, secrets, credentials or API keys.
   - `touch data/memory/PAUSE` pauses recording; `rm` it to resume.
-  - Delete `data/memory/` to forget everything.
-- **Needs** Ollama running with `ollama pull embeddinggemma`, and `ANTHROPIC_API_KEY`. Without Ollama, frames are still kept but captions fail; run `npm run memory:caption` later to catch up.
-- **From the terminal:** `npm run memory:ask -- "what was I doing at 3?"` asks the same memory with read-only tools. `npm run test:memory` runs the offline tests.
+  - To forget everything: delete `data/memory/` and run `drop schema screen_memory cascade` on the Tiger service.
+- **Needs** `TIGER_DATABASE_URL` (a Tiger Cloud service's connection string; the free Shared tier works and has BM25). A new Tiger service first uses Tiger's own CA, then a public certificate, so both the public roots and `server/memory/tiger-ca.pem` are trusted (verified either way), Ollama running with `ollama pull embeddinggemma`, and `ANTHROPIC_API_KEY`. The schema is created on first start. Without Ollama, frames are still kept but captions fail; run `npm run memory:caption` later to catch up.
+- **From the terminal:** `npm run memory:ask -- "what was I doing at 3?"` asks the same memory with read-only tools. `npm run test:memory` runs the tests (the database ones in a throwaway schema on Tiger).
 
 Why not stream video to a model? The pasted Gemini prototype sends 10 s MP4 batches. Change-gated stills cost less, need no Python or Chroma, and keep a real screenshot that Orion can zoom into when a caption isn't enough.
 
@@ -176,15 +195,19 @@ phone (remote.html via ngrok)  ── WebRTC, LAN ──►  control page (index
                                                     ── Vite dev websocket (local page only) ──►
 server/pointer/    brain.ts every 10 ms: One Euro → I-VT lock → snap → spring → dwell; wheel, zoom, scroll
 server/plugin.ts   xdotool mousemove / mousedown / click (newest move wins, buttons never dropped)
-server/halo.py     the halo, target glow, dwell ring, wheel and zoom panel (click-through, hides the arrow)
+server/halo.py     the halo, target glow, dwell ring, wheel and zoom panel (click-through, hides the arrow; animated)
+server/theme.py    the overlays' look: Orion night sky (navy glass, starlight blue, one warm accent), easing, glass/shadow/Pango helpers
+server/wake.py     "Hey Orion" + spoken yes/no, offline (Vosk), driven by server/wake.ts
 server/targets.py  AT-SPI: clickable rectangles in the active window, for snapping
 server/keys.ts     server/keys.py: arecord → Vosk (word list) → hold/tap/stop → xdotool key/keydown/keyup
 server/speech.ts   arecord + ElevenLabs Scribe, shared by:
 server/orion.ts      speech → server/agent.ts (Claude) → server/computer.ts
 server/dictation.ts  speech → xdotool type
-server/memory/     screen memory: recorder.ts (x11grab → change gate → caption.ts Haiku → embed.ts Ollama → db.ts sqlite),
-                   memory.ts + tools.ts (search / timeline / re-look, given to agent.ts)
-server/overlay.py  the status pill
+server/memory/     screen memory: recorder.ts (x11grab → change gate → caption.ts Haiku → embed.ts Ollama → db.ts Tiger Cloud),
+                   memory.ts + tools.ts (hybrid search / timeline / usage / re-look, given to agent.ts)
+server/backboard.ts  Orion's long-term memory of the person (Backboard), recalled into each command
+server/voice.ts    Orion's answers out loud: ElevenLabs TTS → ffplay
+server/overlay.py  the status pill: GTK + cairo, slides/fades in, resizes smoothly, an icon per state (level bars, spinner, check, ?…)
 ```
 
 - **Why a page in the middle.** Node has no WebRTC. The page only relays; the server does all mic capture and every action, so the page needs no permissions.

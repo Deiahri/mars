@@ -85,7 +85,7 @@ export type BrainHooks = {
   /** The wheel items the server owns: Dictate, Orion, Keys, Snap (+ AI targets). */
   menuAction: (id: string) => void;
   /** What their labels show. */
-  menuState: () => Pick<MenuState, 'ai' | 'keys' | 'orion' | 'dictate'>;
+  menuState: () => Pick<MenuState, 'ai' | 'keys' | 'wake' | 'tts' | 'orion' | 'dictate'>;
   /** A PNG (base64) of this screen region, taken with our overlay hidden; null if it failed. */
   zoomShot: (r: Rect) => Promise<string | null>;
   now?: () => number;
@@ -595,7 +595,7 @@ export class PointerBrain {
         return this.hooks.onState();
       }
       default:
-        return this.hooks.menuAction(id); // dictate, orion, keys, snap
+        return this.hooks.menuAction(id); // dictate, orion, keys, wake, tts, snap
     }
   }
 

@@ -258,7 +258,7 @@ function rig(opts: { live?: boolean; snap?: boolean } = {}) {
     info: () => {},
     live: () => opts.live ?? true,
     menuAction: (id) => actions.push(id),
-    menuState: () => ({ ai: 'n/a', keys: 'off', orion: true, dictate: true }),
+    menuState: () => ({ ai: 'n/a', keys: 'off', wake: 'on', tts: 'on', orion: true, dictate: true }),
     zoomShot: async (r) => (shots.push(r), 'PNG'),
     now: () => t,
     timer: false,
@@ -319,7 +319,7 @@ test('Brain: Click keeps press-and-hold drag on the phone', () => {
 });
 
 test('Wheel: layout has 4 tiles + center, all on screen even in a corner', () => {
-  const items = menuAt(buildMenu({ dwell: false, snap: false, ai: 'n/a', keys: 'off', orion: true, dictate: true, zoomK: 3 }), [])!;
+  const items = menuAt(buildMenu({ dwell: false, snap: false, ai: 'n/a', keys: 'off', wake: 'on', tts: 'on', orion: true, dictate: true, zoomK: 3 }), [])!;
   assert.deepEqual(items.map((i) => i.id), ['zoom', 'click', 'scroll', 'more']);
   for (const at of [{ x: 683, y: 384 }, { x: 0, y: 0 }, { x: W, y: H }]) {
     const { tiles } = wheelLayout(at, items, 'Close', W, H);
@@ -371,9 +371,10 @@ test('Wheel: dwell picks a tile', () => {
   assert.deepEqual(r.clicks(), []);
 });
 
-test('Wheel: Dictate / Orion / Keys / Snap go to the server', () => {
+test('Wheel: Dictate / Orion / Snap / Voice › Hey Orion, Orion speaks, Keys go to the server', () => {
   const r = rig();
-  for (const [path, id] of [[['more'], 'dictate'], [['more'], 'orion'], [['more', 'settings'], 'keys'], [['more', 'settings'], 'snap']] as const) {
+  const voice = ['more', 'settings', 'voice'];
+  for (const [path, id] of [[['more'], 'dictate'], [['more'], 'orion'], [['more', 'settings'], 'snap'], [voice, 'wake'], [voice, 'tts'], [voice, 'keys']] as const) {
     r.hold(600, 400, 300);
     r.press('wheel');
     r.hold(600, 400, 20);
@@ -381,7 +382,7 @@ test('Wheel: Dictate / Orion / Keys / Snap go to the server', () => {
     r.pick(id);
     assert.equal(r.brain.ui, 'normal');
   }
-  assert.deepEqual(r.actions, ['dictate', 'orion', 'keys', 'snap']);
+  assert.deepEqual(r.actions, ['dictate', 'orion', 'snap', 'wake', 'tts', 'keys']);
 });
 
 test('One-shot: Double click once, then plain clicks; Right cancels a pending one', () => {
