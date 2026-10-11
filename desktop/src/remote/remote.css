@@ -1,0 +1,271 @@
+:root {
+  --bg: #0b0d10;
+  --panel: #151a20;
+  --line: #2a323c;
+  --ink: #e8edf2;
+  --muted: #8b96a3;
+  --accent: #ffb020;
+  --ok: #3ddc84;
+  --bad: #ff4f57;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  overscroll-behavior: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+button {
+  font: inherit;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  min-height: 48px;
+  padding: 0 18px;
+}
+
+button:active {
+  background: var(--line);
+}
+
+/* ---------- start screen ---------- */
+.start {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+}
+
+.start[hidden],
+.pad[hidden] {
+  display: none;
+}
+
+.start h1 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: -0.02em;
+}
+
+.start p {
+  margin: 0;
+  color: var(--muted);
+  max-width: 32ch;
+}
+
+#go {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  font-weight: 700;
+  font-size: 20px;
+  min-height: 64px;
+  padding: 0 40px;
+  margin-top: 8px;
+}
+
+.note {
+  color: var(--accent) !important;
+  font-size: 14px;
+}
+
+/* ---------- pad (portrait, held like a TV remote) ---------- */
+.pad {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  /* top bar, mouse buttons (fill), toggles, heard word, Orion */
+  grid-template-rows: auto 1fr auto auto auto;
+  gap: 14px;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.dot.ok {
+  background: var(--ok);
+}
+
+.dot.bad {
+  background: var(--bad);
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.center {
+  min-height: 44px;
+  font-weight: 600;
+}
+
+button:disabled {
+  opacity: 0.35;
+}
+
+.mouse {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 14px;
+  min-height: 0;
+}
+
+.click {
+  border-radius: 24px;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.15;
+  background: var(--panel);
+}
+
+.mode-label {
+  display: block;
+  margin-top: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
+.mode-label:empty {
+  display: none;
+}
+
+.click.active .mode-label {
+  color: var(--bg);
+}
+
+.click.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
+.toggles {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+}
+
+.toggle {
+  min-height: 56px;
+  font-weight: 600;
+}
+
+.toggle b {
+  margin-left: 6px;
+  color: var(--muted);
+}
+
+.toggle.on {
+  border-color: var(--ok);
+}
+
+.toggle.on b {
+  color: var(--ok);
+}
+
+.heard {
+  margin: -6px 0 0;
+  min-height: 1.2em;
+  text-align: center;
+  font: 14px ui-monospace, Menlo, monospace;
+  color: var(--accent);
+}
+
+.orion {
+  display: grid;
+  gap: 10px;
+}
+
+.orion-text {
+  margin: 0;
+  min-height: 1.4em;
+  max-height: 4.2em;
+  overflow: hidden;
+  font-size: 14px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.orion-btn {
+  min-height: 72px;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  border-color: #4ea1ff;
+  color: #4ea1ff;
+}
+
+.choice {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.choice[hidden] {
+  display: none;
+}
+
+.choice button {
+  min-height: 72px;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.ok {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: var(--bg);
+}
+
+.cancel {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+/* Cancel alone (transcribing, working) takes the full width. */
+.choice:has(> [hidden]) {
+  grid-template-columns: 1fr;
+}
+
+.choice > [hidden] {
+  display: none;
+}

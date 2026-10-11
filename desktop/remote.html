@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0d10" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%226%22 fill=%22%23ffb020%22/%3E%3C/svg%3E" />
+    <title>Gymote Remote</title>
+  </head>
+  <body>
+    <div id="start" class="start">
+      <h1>Gymote Desktop</h1>
+      <p>Hold the phone like a TV remote, top edge pointing at the laptop screen.</p>
+      <button id="go" type="button">Tap to start</button>
+      <p id="start-note" class="note"></p>
+    </div>
+
+    <main id="pad" class="pad" hidden>
+      <header class="top">
+        <div class="status"><span id="dot" class="dot"></span><span id="status">connecting…</span></div>
+        <button id="center" type="button" class="center">Center</button>
+      </header>
+
+      <section class="mouse">
+        <button id="left" type="button" class="click">Click<small id="mode-label" class="mode-label"></small></button>
+        <button id="right" type="button" class="click">Right<br />click</button>
+      </section>
+
+      <section class="toggles">
+        <button id="mouse" type="button" class="toggle">Mouse <b id="mouse-state">on</b></button>
+        <button id="keys" type="button" class="toggle">Keys <b id="keys-state">off</b></button>
+        <button id="dwell" type="button" class="toggle">Dwell <b id="dwell-state">off</b></button>
+      </section>
+      <p id="heard" class="heard"></p>
+
+      <section class="orion">
+        <p id="orion-text" class="orion-text"></p>
+        <button id="orion" type="button" class="orion-btn">Orion</button>
+        <div id="choice" class="choice" hidden>
+          <button id="ok" type="button" class="ok">OK</button>
+          <button id="cancel" type="button" class="cancel">Cancel</button>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/src/remote/main.ts"></script>
+  </body>
+</html>
