@@ -15,12 +15,9 @@
 #include "esp_camera.h"
 #include "esp_http_server.h"
 
-// --- Edit these ---
-// ESP32 is 2.4 GHz only. Guest/university WiFi (UHGuest) isolates clients, so the
-// laptop can't reach the cam there: use a phone/laptop hotspot both devices join.
-#define WIFI_SSID   "your-hotspot"
-#define WIFI_PASS   "your-password"
-#define DEVICE_NAME "eyecam-left"  // "eyecam-right" on the second board -> http://eyecam-left.local
+// WIFI_SSID, WIFI_PASS, DEVICE_NAME live in secrets.h (gitignored): copy
+// secrets.example.h to secrets.h and fill it in.
+#include "secrets.h"
 #define GRAYSCALE   1              // pupil tracking only needs luma; grey JPEGs are smaller = more fps
 
 // --- Camera Pins (AI Thinker Model) ---

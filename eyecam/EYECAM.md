@@ -27,7 +27,30 @@ That sketch fails with "Connection failed! Still out of memory for SSL." Five ca
 ## Run it
 
 1. **Hotspot.** Turn on a phone hotspot on **2.4 GHz** (the ESP32 can't see 5 GHz; on iPhone, turn on "Maximize Compatibility"). Connect the laptop to it too.
-2. **Flash.** Edit `WIFI_SSID`, `WIFI_PASS` and `DEVICE_NAME` at the top of the `.ino`. In Arduino IDE, choose the board **AI Thinker ESP32-CAM**, then upload. To flash: GPIO0 → GND, reset, upload, remove the jumper, reset.
+2. **Flash.**
+   - **Credentials.** Copy `hardware/eyecam_stream/secrets.example.h` to `secrets.h` (gitignored) and fill in `WIFI_SSID`, `WIFI_PASS` and `DEVICE_NAME`.
+   - **Toolchain, one time.** The Arduino IDE works too (board **AI Thinker ESP32-CAM**), but the script below uses arduino-cli:
+
+     ```sh
+     curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=~/.local/bin sh
+     arduino-cli config init
+     arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+     arduino-cli core update-index && arduino-cli core install esp32:esp32
+     ```
+
+   - **Wire the FTDI / USB-TTL adapter.** Set the adapter to 5 V if it has a jumper. On 3.3 V the camera browns out.
+
+     | Adapter | ESP32-CAM |
+     |---|---|
+     | GND | GND |
+     | 5V | 5V |
+     | TX | U0R |
+     | RX | U0T |
+
+     For flash mode, also jumper **IO0 → GND**.
+   - **Run** `hardware/flash.sh`. It compiles, waits while you press RST (with IO0 on GND), uploads, waits while you pull the jumper and press RST, then opens Serial.
+     - If the upload fails with "Failed to connect" or "wrong boot mode", check that IO0 is on GND and press RST again. Long jumper wires can garble the upload: retry with `SLOW=1 hardware/flash.sh`.
+     - `hardware/flash.sh --monitor` only opens Serial.
 3. **Check Serial (115200).** You should see `camera ok`, then `WiFi connected, ip=…`, then a line every 5 s:
 
    ```
@@ -65,7 +88,7 @@ That sketch fails with "Connection failed! Still out of memory for SSL." Five ca
   - Pupil found in 138 of 138 frames.
   - Median error 0.6 px.
   - Reconnects automatically after the stream drops.
-- **Firmware:** written but **not compiled or flashed yet**. Report any compile errors.
+- **Firmware:** compiles cleanly with arduino-cli 1.5.1 and esp32 core 3.3.12 (33% flash, 18% RAM). **Not flashed to a board yet.**
 - **Not done:**
   - **IR.** Pupil detection under normal room light will be shaky, so the next step is IR LEDs plus a lens without an IR filter. EyeTrackVR does this; follow its IR safety notes.
   - **Calibration** from pupil position to a point on the screen.
