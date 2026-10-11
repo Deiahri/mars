@@ -1,0 +1,240 @@
+:root {
+  --bg: #0b0d10;
+  --panel: #151a20;
+  --line: #2a323c;
+  --ink: #e8edf2;
+  --muted: #8b96a3;
+  --accent: #ffb020;
+  --ok: #3ddc84;
+  --bad: #ff4f57;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  overscroll-behavior: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+button {
+  font: inherit;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  min-height: 48px;
+  padding: 0 18px;
+}
+
+button:active {
+  background: var(--line);
+}
+
+/* ---------- start screen ---------- */
+.start {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+}
+
+.start[hidden],
+.pad[hidden] {
+  display: none;
+}
+
+.start h1 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: -0.02em;
+}
+
+.start p {
+  margin: 0;
+  color: var(--muted);
+  max-width: 32ch;
+}
+
+#go {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  font-weight: 700;
+  font-size: 20px;
+  min-height: 64px;
+  padding: 0 40px;
+  margin-top: 8px;
+}
+
+.note {
+  color: var(--accent) !important;
+  font-size: 14px;
+}
+
+/* ---------- pad (portrait, held like a TV remote) ---------- */
+/* Three big buttons (Left, Right, Menu), like the two or three switches a gaze user has, and the
+   scroll speed slider down the right edge. */
+.pad {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 1fr 56px;
+  /* top bar, buttons (fill), Orion text, heard word */
+  grid-template-rows: auto 1fr auto auto;
+  gap: 14px;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+}
+
+.top,
+.orion-text,
+.heard {
+  grid-column: 1 / -1;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.dot.ok {
+  background: var(--ok);
+}
+
+.dot.bad {
+  background: var(--bad);
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.center {
+  min-height: 44px;
+  font-weight: 600;
+}
+
+button:disabled {
+  opacity: 0.35;
+}
+
+.buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 2fr 1fr;
+  gap: 14px;
+  min-height: 0;
+}
+
+.click {
+  border-radius: 24px;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.15;
+  padding: 0 10px;
+  background: var(--panel);
+}
+
+.click.wheel {
+  grid-column: 1 / -1;
+  border-color: #4ea1ff;
+  color: #4ea1ff;
+}
+
+.click.ok {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.click.cancel {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.click.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
+.speed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-height: 0;
+  padding: 10px 0;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.speed.live {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.speed b {
+  color: var(--ink);
+}
+
+/* Vertical, fast at the top. */
+.speed input {
+  flex: 1;
+  min-height: 0;
+  width: 40px;
+  margin: 0;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  accent-color: var(--accent);
+}
+
+.heard {
+  margin: -6px 0 0;
+  min-height: 1.2em;
+  text-align: center;
+  font: 14px ui-monospace, Menlo, monospace;
+  color: var(--accent);
+}
+
+.orion-text {
+  margin: 0;
+  min-height: 1.4em;
+  max-height: 4.2em;
+  overflow: hidden;
+  font-size: 14px;
+  color: var(--muted);
+  text-align: center;
+}

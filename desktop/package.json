@@ -1,0 +1,31 @@
+{
+  "name": "gymote-desktop",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "app": "sh scripts/chrome.sh",
+    "setup:keys": "python3 -m venv .venv && .venv/bin/pip install vosk && node scripts/fetch-vosk.mjs",
+    "test:keys": "node --experimental-strip-types --no-warnings scripts/keys-test.ts",
+    "test:pointer": "node --experimental-strip-types --no-warnings scripts/pointer-test.ts",
+    "build": "tsc && vite build",
+    "look": "node --experimental-strip-types --no-warnings scripts/vision-look.ts",
+    "test:memory": "node --experimental-strip-types --no-warnings scripts/memory-test.ts",
+    "memory:ask": "node --experimental-strip-types --no-warnings scripts/memory-ask.ts",
+    "memory:caption": "node --experimental-strip-types --no-warnings scripts/memory-caption.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@types/pg": "^8.23.1",
+    "@types/qrcode": "^1.5.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.131.0",
+    "gymote": "1.0.0",
+    "pg": "^8.23.1",
+    "qrcode": "^1.5.4"
+  }
+}

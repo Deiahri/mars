@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%226%22 fill=%22%23ffb020%22/%3E%3C/svg%3E" />
+    <title>Gymote Desktop</title>
+  </head>
+  <body>
+    <header class="bar">
+      <h1>Gymote Desktop</h1>
+      <div class="link"><span id="link-dot" class="dot"></span><span id="link">phone: starting…</span></div>
+    </header>
+
+    <main>
+      <section class="card connect" id="connect">
+        <h2>Pair your phone</h2>
+        <canvas id="qr" width="200" height="200"></canvas>
+        <code id="url">…</code>
+        <ol>
+          <li>Run <code>ngrok http 127.0.0.1:5176</code> (phones only give motion data over https).</li>
+          <li>Phone on the same Wi-Fi as this laptop (or the laptop on the phone's hotspot).</li>
+          <li>Scan, tap <b>Tap to start</b>, hold it like a TV remote and aim at the screen.</li>
+        </ol>
+        <p id="connect-warn" class="warn"></p>
+      </section>
+
+      <section class="card">
+        <table class="kv">
+          <tr><th>Phone mouse</th><td><b id="mouse" class="pill">—</b> <button id="mouse-toggle" type="button" class="mini">turn off</button></td></tr>
+          <tr><th>Keystroke mode</th><td><b id="keys" class="pill">—</b> <span id="heard" class="muted"></span></td></tr>
+          <tr><th>Orion</th><td><b id="orion" class="pill">—</b> <span id="orion-text" class="muted"></span></td></tr>
+          <tr>
+            <th>Hey Orion</th>
+            <td>
+              <b id="wake" class="pill">—</b> <button id="wake-toggle" type="button" class="mini">turn off</button>
+              <button id="tts-toggle" type="button" class="mini">voice on</button>
+              <small>Say “Hey Orion”, wait for the chime, say what you want, then press OK on the phone. When Orion asks a question, say “yes” or “no”. Heard offline: nothing leaves the laptop until you press OK.</small>
+            </td>
+          </tr>
+          <tr><th>Dictation</th><td><b id="dictation" class="pill">—</b> <span id="dictation-text" class="muted"></span></td></tr>
+          <tr>
+            <th>Remembers you</th>
+            <td>
+              <b id="backboard" class="pill">—</b>
+              <small>Orion's long-term memory of you on Backboard: people, preferences, routines, and what you asked before. Say “remember that…”, or just mention things.</small>
+            </td>
+          </tr>
+          <tr>
+            <th>Screen memory</th>
+            <td>
+              <b id="memory" class="pill">—</b> <button id="memory-toggle" type="button" class="mini">turn on</button>
+              <span id="memory-status" class="muted"></span>
+              <small>Keeps a screenshot whenever the screen changes and Claude (Haiku) captions it, so you can ask Orion later: “what was that error earlier?”, “reopen the page I was reading”. Screenshots go to Anthropic; password, bank and chat windows are skipped.</small>
+            </td>
+          </tr>
+          <tr>
+            <th>Gap between keys</th>
+            <td>
+              <button id="gap-down" type="button" class="mini">−</button>
+              <b id="gap">0</b> ms
+              <button id="gap-up" type="button" class="mini">+</button>
+              <small>Spaces out fast repeats ("right right right"). ~300 ms for games that animate each move, like Bloxorz.</small>
+            </td>
+          </tr>
+          <tr><th>Pointer</th><td><span id="pos" class="mono">—</span> <span id="ptr-state" class="muted"></span></td></tr>
+          <tr>
+            <th>Doing</th>
+            <td>
+              <b id="mode" class="pill">—</b>
+              <small>The phone's Menu button opens the wheel around the pointer: Zoom, Click types, Scroll, More (Orion, Keys, Pointer settings, Pause). Point at a tile and press Left.</small>
+            </td>
+          </tr>
+          <tr>
+            <th>Dwell click</th>
+            <td>
+              <button id="dwell" type="button" class="mini">off</button>
+              <button id="dwell-down" type="button" class="mini">−</button>
+              <b id="dwell-base">800</b> ms
+              <button id="dwell-up" type="button" class="mini">+</button>
+              <span class="muted">now <b id="dwell-now">800</b> ms</span>
+              <button id="dwell-reset" type="button" class="mini">reset</button>
+              <small>Hold still on something to select it. The time adapts: a little shorter after selections that go well, longer after a quick retry.</small>
+            </td>
+          </tr>
+          <tr>
+            <th>Snap to buttons</th>
+            <td>
+              <button id="snap" type="button" class="mini">off</button>
+              <span id="targets" class="muted"></span>
+              <small>The pointer jumps onto the nearest button, link or field. Apps must have accessibility on (see the README).</small>
+            </td>
+          </tr>
+          <tr>
+            <th>AI targets</th>
+            <td>
+              <button id="ai" type="button" class="mini">on</button>
+              <span id="ai-status" class="muted"></span>
+              <small>Claude (Sonnet 5.5) looks at the screen and finds the buttons that the accessibility tree misses. It looks again only when the screen changes, a few cents each time.</small>
+            </td>
+          </tr>
+          <tr>
+            <th>Drift correction</th>
+            <td>
+              <span id="offset" class="mono">0, 0</span> px
+              <button id="offset-reset" type="button" class="mini">reset</button>
+              <small>Learned from each selection on a small button. Center resets it.</small>
+            </td>
+          </tr>
+          <tr><th>Screen</th><td id="screen" class="muted">waiting for server…</td></tr>
+          <tr>
+            <th>Sensitivity</th>
+            <td>
+              <button id="dist-down" type="button" class="mini">−</button>
+              phone distance <b id="dist">1.5</b> × screen width
+              <button id="dist-up" type="button" class="mini">+</button>
+              <small>Turn about <b id="angle">—</b> to cross the screen. Farther = less turning.</small>
+            </td>
+          </tr>
+        </table>
+        <div class="actions">
+          <button id="center" type="button">Center phone <small>C</small></button>
+          <button id="stop" type="button" class="danger">Stop everything <small>Esc</small></button>
+        </div>
+        <p id="warn" class="warn"></p>
+      </section>
+
+      <section class="card">
+        <h3>Orion log</h3>
+        <ol id="log" class="log"></ol>
+      </section>
+    </main>
+
+    <script type="module" src="/src/screen/main.ts"></script>
+  </body>
+</html>

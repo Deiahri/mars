@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+.chrome-profile/
+.env
+.venv/
+models/
+data/
