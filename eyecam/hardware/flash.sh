@@ -7,13 +7,13 @@
 #   SLOW=1 hardware/flash.sh          upload at 115200 (flaky jumper wires)
 #   hardware/flash.sh --monitor       skip flashing, just watch Serial
 #
-# One-time setup: see EYECAM.md ("Flash").
+# One-time setup: see eyecam/README.md ("Flash").
 set -euo pipefail
 
 FQBN="esp32:esp32:esp32cam"
 SKETCH="$(cd "$(dirname "$0")" && pwd)/eyecam_stream"
 CLI="$(command -v arduino-cli || echo "$HOME/.local/bin/arduino-cli")"
-[ -x "$CLI" ] || { echo "arduino-cli not found: see EYECAM.md"; exit 1; }
+[ -x "$CLI" ] || { echo "arduino-cli not found: see eyecam/README.md"; exit 1; }
 
 MONITOR_ONLY=0
 PORT=""

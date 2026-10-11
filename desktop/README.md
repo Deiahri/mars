@@ -1,6 +1,6 @@
-# Gymote Desktop
+# Sightline: desktop app
 
-gaze-desktop with the eye tracking swapped out for a phone, as a stand-in until the gaze hardware works. Aim the phone at the laptop like a TV remote and the **real desktop pointer** follows. The phone is only a remote: the laptop does all the work.
+The laptop side of [Sightline](../README.md): the gaze-ready pointer, the accessibility wheel, dictation, voice keys and Orion. It's built to be driven by the eyes. Until the [eye cams](../eyecam/) are calibrated to the screen, a phone stands in for them through [Gymote](https://github.com/dulnan/gymote): aim the phone at the laptop like a TV remote and the **real desktop pointer** follows. The phone is only a remote: the laptop does all the work.
 
 The phone has three big buttons, like the two or three switches a gaze user would have. Each button's label always says what it does right now.
 
@@ -70,7 +70,7 @@ The phone stands in for eye gaze, so the pointer follows gaze-UX practice: calm,
 - Limits: one look at a time, 3 s apart, at most 6 a minute (worst case about $11 an hour on a screen that never stops changing). Looks only happen while someone is pointing: phone input in the last 30 s, not paused, snap on, no wheel or zoom open.
 - AI boxes don't train the drift correction, since they're approximate.
 - **AI targets** on the control page turns it on or off and shows the state, box count, looks, reuses and cost so far. `AI_SNAP=0` in `.env` starts with it off. It needs `GEMINI_API_KEY`. A look takes ~20–30 s (it runs in the background) and ~$0.02.
-- `npm run look` does one look at the current screen. It prints the boxes and writes the screenshot with them drawn on it to `/tmp/gymote-look.png`.
+- `npm run look` does one look at the current screen. It prints the boxes and writes the screenshot with them drawn on it to `/tmp/sightline-look.png`.
 
 ### The wheel
 
@@ -160,7 +160,7 @@ Screen memory remembers what was on the screen. **Backboard** (`server/backboard
 
 ## Screen memory
 
-Orion remembers what was on the screen, so you can ask about it later. This is the screen-memory spike merged in (`server/memory/`), with its database on **Tiger Data** (Tiger Cloud: Postgres + TimescaleDB + pgvector + BM25).
+Orion remembers what was on the screen, so you can ask about it later. It lives in `server/memory/`, with its database on **Tiger Data** (Tiger Cloud: Postgres + TimescaleDB + pgvector + BM25).
 
 - **Recording.** Every 10 s, plus about a second after each click, the screen is grabbed. It's kept only if it changed. The halo moving around doesn't count as a change, and neither do the wheel or the zoom panel. Kept frames are captioned by Gemini (`gemini-3.8-flash`) (app, activity, what the pointer was on, verbatim text) and embedded locally with Ollama (`embeddinggemma`). The cost is about $0.002 a frame, and an idle screen keeps nothing.
 - **Stored in Tiger.** Screenshots stay on this laptop (`data/memory/shots/`). Their captions, embeddings and the action log go to Tiger Cloud:
@@ -178,7 +178,7 @@ Orion remembers what was on the screen, so you can ask about it later. This is t
 - **Needs** `TIGER_DATABASE_URL` (a Tiger Cloud service's connection string; the free Shared tier works and has BM25). A new Tiger service first uses Tiger's own CA, then a public certificate, so both the public roots and `server/memory/tiger-ca.pem` are trusted (verified either way), Ollama running with `ollama pull embeddinggemma`, and `GEMINI_API_KEY`. The schema is created on first start. Without Ollama, frames are still kept but captions fail; run `npm run memory:caption` later to catch up.
 - **From the terminal:** `npm run memory:ask -- "what was I doing at 3?"` asks the same memory with read-only tools. `npm run test:memory` runs the tests (the database ones in a throwaway schema on Tiger).
 
-Why not stream video to a model? The pasted Gemini prototype sends 10 s MP4 batches. Change-gated stills cost less, need no Python or Chroma, and keep a real screenshot that Orion can zoom into when a caption isn't enough.
+Why not stream video to a model? Sending 10 s MP4 batches is the obvious design. Change-gated stills cost less, need no Python or Chroma, and keep a real screenshot that Orion can zoom into when a caption isn't enough.
 
 ## Stopping things
 
@@ -217,9 +217,9 @@ server/overlay.py  the status pill: GTK + cairo, slides/fades in, resizes smooth
   - Vite binds to `127.0.0.1`, so nothing is exposed on the LAN.
   - The dev websocket also serves the phone page (through ngrok). The server only takes commands from sockets that come from loopback *without* ngrok's `X-Forwarded-For` header.
   - WebRTC signaling (`/api/link/*`) and the fallback relay (`link:relay` on the dev websocket) need the pairing code, which only the local page gets.
-- **Gymote bugs.** The same phone-side workarounds as gymote-playground (see its README): the Android gyroscope start, and retries for a reading of exactly 0. The laptop side doesn't use `GymoteScreen` any more (its fixed easing needed a re-feed hack); the raw packet goes straight to `server/pointer/`.
+- **Gymote bugs.** Two phone-side workarounds for Gymote (`src/remote/main.ts`): the Android gyroscope start, and retries for a reading of exactly 0. The laptop side doesn't use `GymoteScreen` any more (its fixed easing needed a re-feed hack); the raw packet goes straight to `server/pointer/`.
 - **Python helpers and VS Code.** Started from VS Code's snap terminal, the environment points GTK at the snap's libraries and the system Python crashes. `server/env.ts` strips those for the helpers.
-- **Copied from:**
+- **Ported from our earlier hackathon prototypes** (not in this repo):
   - gymote-playground: `src/net/*`, `src/gymote.d.ts`, `server/signaling.ts` (+ token), and the phone's start flow.
   - gaze-desktop: Pointer coalescing, `overlay.py`, `chrome.sh`.
   - os-control-spike: `agent.ts`, `safety.ts`, and `desktop.ts` (now `computer.ts`).
@@ -230,7 +230,7 @@ server/overlay.py  the status pill: GTK + cairo, slides/fades in, resizes smooth
 ```bash
 npm run test:keys                                   # word → key logic
 npm run test:pointer                                # filter, lock + creep, spring, snap, dwell, wheel, zoom, scroll, click types, recal, AI merge (fake time)
-npm run look                                        # one AI-targets look at the screen, boxes drawn to /tmp/gymote-look.png (one Gemini call)
+npm run look                                        # one AI-targets look at the screen, boxes drawn to /tmp/sightline-look.png (one Gemini call)
 GM_DEBUG_POINTER=1 npm run dev                      # log fixations, snaps, target scans and each jump's time to 90%
 GM_DRY_RUN=1 npm run dev                            # log pointer xdotool calls instead of running them
 GM_KEYS_SOURCE="cat clip.pcm" npm run dev           # feed keystroke mode 16 kHz mono s16le PCM instead of the mic

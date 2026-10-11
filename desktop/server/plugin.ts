@@ -168,7 +168,7 @@ class Pointer {
         if (process.env.GM_DRY_RUN) console.log(`[dry] xdotool ${args.join(' ')}`);
         else await run('xdotool', args);
       } catch (e) {
-        console.warn('[gymote-desktop] xdotool failed:', (e as Error).message);
+        console.warn('[sightline] xdotool failed:', (e as Error).message);
       }
     }
     this.busy = false;
@@ -191,7 +191,7 @@ function startOverlay<M extends object = object>(server: ViteDevServer, file = '
   let closing = false;
   child.on('exit', (code) => {
     alive = false;
-    if (!closing && g[slot] === child) console.warn(`[gymote-desktop] ${file} exited (${code}); ${lost}`);
+    if (!closing && g[slot] === child) console.warn(`[sightline] ${file} exited (${code}); ${lost}`);
   });
   // On a Vite restart the old server closes after the new one started: kill only our own overlay.
   server.httpServer?.on('close', () => {
@@ -206,17 +206,17 @@ function startOverlay<M extends object = object>(server: ViteDevServer, file = '
 
 export function desktop(opts: DesktopOpts): Plugin {
   return {
-    name: 'gymote-desktop',
+    name: 'sightline',
     apply: 'serve',
     async configureServer(server: ViteDevServer) {
       const session = checkSession();
-      if (session.warning) console.warn(`[gymote-desktop] ${session.warning}`);
+      if (session.warning) console.warn(`[sightline] ${session.warning}`);
       let w = 0;
       let h = 0;
       try {
         [w, h] = (await run('xdotool', ['getdisplaygeometry'])).stdout.trim().split(/\s+/).map(Number);
       } catch (e) {
-        console.warn('[gymote-desktop] xdotool getdisplaygeometry failed:', (e as Error).message);
+        console.warn('[sightline] xdotool getdisplaygeometry failed:', (e as Error).message);
       }
 
       // ------------------------------------------------------------ trusted clients only
@@ -238,7 +238,7 @@ export function desktop(opts: DesktopOpts): Plugin {
       const pointerLive = () => mouse && w > 0 && (orion.state === 'idle' || orion.state === 'listening');
       // Zoom-click snapshots (the overlay is cleared first; give the compositor a frame to show that).
       const desk = new Desktop();
-      const deskReady = desk.init().catch((e) => console.warn('[gymote-desktop] no zoom snapshots:', (e as Error).message));
+      const deskReady = desk.init().catch((e) => console.warn('[sightline] no zoom snapshots:', (e as Error).message));
 
       const brain = new PointerBrain(w || 1, h || 1, {
         out: pointer,
@@ -473,7 +473,7 @@ export function desktop(opts: DesktopOpts): Plugin {
       });
       on<{ button: PhoneButton; down: boolean }>('gm:button', ({ button, down }) => {
         if (button !== 'left' && button !== 'right' && button !== 'wheel') return;
-        if (process.env.GM_DEBUG) console.log(`[gymote-desktop] ${button} ${down ? 'down' : 'up'}`);
+        if (process.env.GM_DEBUG) console.log(`[sightline] ${button} ${down ? 'down' : 'up'}`);
         // While dictating, Left types it and Right cancels.
         if (dictation.state !== 'idle') {
           if (!down) return brain.phoneButton(button, false);
@@ -565,7 +565,7 @@ export function desktop(opts: DesktopOpts): Plugin {
       });
 
       console.log(
-        `[gymote-desktop] screen ${w}×${h} (${session.type}); keys ${keys.status}; Orion ${orion.missing ?? 'ready'}; dictation ${dictation.missing ?? 'ready'}; voice ${voice.on ? 'on' : 'off'}; Hey Orion ${wake.status}; Backboard ${person.on ? 'on' : 'needs BACKBOARD_API_KEY'}; AI targets ${vision.available ? (vision.enabled ? 'on' : 'off') : 'need GEMINI_API_KEY'}; screen memory ${screenMemory.missing ?? (opts.memory ? 'on' : 'off')}`,
+        `[sightline] screen ${w}×${h} (${session.type}); keys ${keys.status}; Orion ${orion.missing ?? 'ready'}; dictation ${dictation.missing ?? 'ready'}; voice ${voice.on ? 'on' : 'off'}; Hey Orion ${wake.status}; Backboard ${person.on ? 'on' : 'needs BACKBOARD_API_KEY'}; AI targets ${vision.available ? (vision.enabled ? 'on' : 'off') : 'need GEMINI_API_KEY'}; screen memory ${screenMemory.missing ?? (opts.memory ? 'on' : 'off')}`,
       );
     },
   };

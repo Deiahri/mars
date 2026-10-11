@@ -110,7 +110,7 @@ function system(w: number, h: number, safe: boolean, memory: boolean, person: bo
 How to work:
 - Prefer the keyboard when it is reliable: the Super key opens GNOME Activities, where you can type an app name and press Enter; ctrl+l focuses a browser address bar; alt+F4 closes a window.
 - Several actions in one turn are fine when you are confident of the result (click a field, type, press Enter). You get a screenshot after each turn.
-- A browser tab or window titled "Gymote Desktop" is your own control panel. Never click, type into, or close it; switch away from it to do the task.
+- A browser tab or window titled "Sightline" is your own control panel. Never click, type into, or close it; switch away from it to do the task.
 - A rounded navy pill near the bottom of the screen is a status overlay, and a soft circle is the person's pointer. Ignore them; they never take focus.
 - If something unexpected appears (a login prompt, a payment page, a permission dialog), stop and say so instead of guessing.${safeRules}
 ${memory ? `\n${MEMORY_PROMPT}\n` : ''}${person ? `\n${PERSON_PROMPT}\n` : ''}

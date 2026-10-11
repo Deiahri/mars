@@ -26,7 +26,7 @@ export function startTargets(server: ViteDevServer, w: number, h: number, onTarg
   let warnedEmpty = false;
   child.on('exit', (code) => {
     alive = false;
-    if (!closing && g.__gymoteTargets === child) console.warn(`[gymote-desktop] targets exited (${code}); no snapping to buttons`);
+    if (!closing && g.__gymoteTargets === child) console.warn(`[sightline] targets exited (${code}); no snapping to buttons`);
   });
   server.httpServer?.on('close', () => {
     closing = true;
@@ -47,7 +47,7 @@ export function startTargets(server: ViteDevServer, w: number, h: number, onTarg
         if (process.env.GM_DEBUG_POINTER) console.log(`[targets] ${m.app || '?'}: ${list.length} in ${m.ms} ms`);
         if (!list.length && m.app && !warnedEmpty) {
           warnedEmpty = true;
-          console.warn(`[gymote-desktop] ${m.app} shows no clickable targets: turn accessibility on to snap (README, "Snapping")`);
+          console.warn(`[sightline] ${m.app} shows no clickable targets: turn accessibility on to snap (README, "Snapping")`);
         }
         onTargets(list, m.app);
       } catch {}

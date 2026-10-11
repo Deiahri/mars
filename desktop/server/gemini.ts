@@ -1,4 +1,4 @@
-// Gemini, over REST (no SDK): every model call in gymote-desktop goes through here.
+// Gemini, over REST (no SDK): every model call in Sightline goes through here.
 //
 //   interact()       the Interactions API: Orion's agent loop (computer use on the desktop + our
 //                    own functions). The server keeps the conversation: pass previous_interaction_id.

@@ -327,7 +327,7 @@ export class VisionTargets {
   }
 
   private fail(error: string) {
-    if (error !== this.st.error) console.warn(`[gymote-desktop] AI targets: ${error}`);
+    if (error !== this.st.error) console.warn(`[sightline] AI targets: ${error}`);
     this.st.error = error;
     this.setState('error');
   }

@@ -1,6 +1,6 @@
 // One AI-targets look at the current screen, to judge the boxes: npm run look [-- out.png]
 // Prints what Gemini found and how long it took, and writes the screenshot with the boxes drawn on
-// it (default /tmp/gymote-look.png). Costs one Gemini call, a fraction of a cent.
+// it (default /tmp/sightline-look.png). Costs one Gemini call, a fraction of a cent.
 
 import '../server/memory/config.ts'; // loads .env (GEMINI_API_KEY)
 import { execFile } from 'node:child_process';
@@ -9,7 +9,7 @@ import { promisify } from 'node:util';
 import { Desktop } from '../server/computer.ts';
 import { findElements, toTargets, VISION } from '../server/vision-targets.ts';
 
-const out = process.argv[2] ?? '/tmp/gymote-look.png';
+const out = process.argv[2] ?? '/tmp/sightline-look.png';
 
 const desktop = new Desktop();
 await desktop.init();
@@ -23,7 +23,7 @@ const cost = usage.input_tokens * VISION.USD_IN + usage.output_tokens * VISION.U
 console.log(`\n${targets.length} targets (${boxes.length} boxes) in ${(ms / 1000).toFixed(1)} s, ${usage.input_tokens} in / ${usage.output_tokens} out, ≈ $${cost.toFixed(3)}`);
 
 // Boxes in screenshot px, drawn onto the screenshot.
-const shot = '/tmp/gymote-look-src.png';
+const shot = '/tmp/sightline-look-src.png';
 writeFileSync(shot, png);
 const s = desktop.scale;
 const draw = targets.map((t) => `drawbox=x=${Math.round(t.x * s)}:y=${Math.round(t.y * s)}:w=${Math.round(t.w * s)}:h=${Math.round(t.h * s)}:color=red@0.9:t=2`);
