@@ -23,7 +23,6 @@
     "vite": "^8.3.1"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "0.131.0",
     "gymote": "1.0.0",
     "pg": "^8.23.1",
     "qrcode": "^1.5.4"

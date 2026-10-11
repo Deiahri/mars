@@ -1,4 +1,4 @@
-// AI snap targets: Claude looks at a screenshot and lists what can be clicked, for the apps that
+// AI snap targets: Gemini looks at a screenshot and lists what can be clicked, for the apps that
 // don't show an accessibility tree to server/targets.py (Chrome without the flag, Electron, games).
 // The pointer snaps to these boxes like to the AT-SPI ones, which are exact and win where both
 // exist (mergeTargets).
@@ -12,16 +12,15 @@
 //   - one scan at a time, MIN_GAP_MS apart, at most MAX_PER_MIN a minute, and only while
 //     someone is pointing and can use them (phone moving, not paused, snapping on, no wheel or zoom open).
 
-import Anthropic from '@anthropic-ai/sdk';
 import { Desktop } from './computer.ts';
+import { GEMINI, generateJson, hasGemini } from './gemini.ts';
 import type { Pt } from './pointer/motion.ts';
 import type { Target } from './pointer/snap.ts';
 
 export const VISION = {
-  MODEL: 'claude-sonnet-5-5',
-  /** $ per token, for the running cost on the control page (Sonnet 5.5: $2 / $10 per million). */
-  USD_IN: 2 / 1e6,
-  USD_OUT: 10 / 1e6,
+  /** $ per token, for the running cost on the control page. */
+  USD_IN: GEMINI.USD_IN,
+  USD_OUT: GEMINI.USD_OUT,
   WATCH_MS: 500,
   THUMB_W: 96,
   THUMB_H: 54,
@@ -74,7 +73,7 @@ export type VisionHooks = {
 const SYSTEM = `You find the interactive elements in desktop screenshots, so an eye-gaze style pointer can snap onto them.
 
 List every element a person could click or type into: buttons, links, tabs, menu and toolbar items, icon buttons, text fields, checkboxes, radio buttons, dropdowns, sliders, list or table rows that open something, window controls.
-- Give each a tight box in the screenshot's pixel coordinates: x0,y0 is the top-left corner, x1,y1 the bottom-right.
+- Give each a tight box_2d: [ymin, xmin, ymax, xmax], normalized to 0-1000 across the screenshot.
 - Each element once, at the size of its clickable area (a whole toolbar button, not only its icon).
 - Be exhaustive, including icon-only buttons: app launchers in docks and taskbars, sidebar and activity-bar icons, toolbar and title-bar icons, system tray icons, links inside text. Go through the screen edge by edge as well as the middle; a busy screen has 50–150 elements.
 - Leave out plain text, headings, images and empty space that do nothing.
@@ -90,18 +89,14 @@ const SCHEMA = {
         type: 'object',
         properties: {
           label: { type: 'string' },
-          x0: { type: 'integer' },
-          y0: { type: 'integer' },
-          x1: { type: 'integer' },
-          y1: { type: 'integer' },
+          // Gemini's native box format: [ymin, xmin, ymax, xmax], each 0-1000 across the image.
+          box_2d: { type: 'array', items: { type: 'integer' }, minItems: 4, maxItems: 4 },
         },
-        required: ['label', 'x0', 'y0', 'x1', 'y1'],
-        additionalProperties: false,
+        required: ['label', 'box_2d'],
       },
     },
   },
   required: ['elements'],
-  additionalProperties: false,
 };
 
 const area = (r: Rect) => r.w * r.h;
@@ -147,41 +142,29 @@ export function toTargets(boxes: Box[], scale: number, w: number, h: number): Ta
 
 /** One look: the interactive elements in a screenshot, as boxes in its own pixel coordinates. */
 export async function findElements(
-  client: Anthropic,
   png: Buffer,
   [sw, sh]: [number, number],
   signal?: AbortSignal,
-): Promise<{ boxes: Box[]; usage: Anthropic.Beta.Messages.BetaUsage }> {
-  const msg = await client.beta.messages.create(
-    {
-      model: VISION.MODEL,
-      max_tokens: 16000,
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-      output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } },
-      system: SYSTEM,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: png.toString('base64') } },
-            { type: 'text', text: `This screenshot is ${sw}×${sh} px. List its interactive elements.` },
-          ],
-        },
-      ],
-    },
-    { signal, timeout: 90_000 },
-  );
-  if (msg.stop_reason === 'refusal') throw new Error('Claude declined to read this screen');
-  if (msg.stop_reason === 'max_tokens') throw new Error('the answer was cut off (max_tokens)');
-  const text = msg.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('');
-  return { boxes: (JSON.parse(text) as { elements: Box[] }).elements ?? [], usage: msg.usage };
+): Promise<{ boxes: Box[]; usage: { input_tokens: number; output_tokens: number } }> {
+  const r = await generateJson<{ elements: { label: string; box_2d: number[] }[] }>({
+    system: SYSTEM,
+    prompt: 'List the interactive elements in this screenshot.',
+    image: { data: png.toString('base64'), mime_type: 'image/png' },
+    schema: SCHEMA,
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(90_000)]) : AbortSignal.timeout(90_000),
+  });
+  const boxes: Box[] = (r.data.elements ?? [])
+    .filter((e) => Array.isArray(e.box_2d) && e.box_2d.length === 4)
+    .map((e) => {
+      const [ymin, xmin, ymax, xmax] = e.box_2d;
+      return { label: e.label, x0: (xmin / 1000) * sw, y0: (ymin / 1000) * sh, x1: (xmax / 1000) * sw, y1: (ymax / 1000) * sh };
+    });
+  return { boxes, usage: { input_tokens: r.input, output_tokens: r.output } };
 }
 
 export class VisionTargets {
   enabled: boolean;
   private desktop = new Desktop();
-  private client: Anthropic | null;
   private ready = false;
   private timer: ReturnType<typeof setInterval> | null = null;
   private watching = false;
@@ -198,10 +181,9 @@ export class VisionTargets {
 
   private hooks: VisionHooks;
 
-  constructor(hooks: VisionHooks, opts: { enabled: boolean; hasClaude: boolean }) {
+  constructor(hooks: VisionHooks, opts: { enabled: boolean }) {
     this.hooks = hooks;
-    this.client = opts.hasClaude ? new Anthropic() : null;
-    this.enabled = opts.enabled && !!this.client;
+    this.enabled = opts.enabled && hasGemini();
     this.st.state = this.enabled ? 'waiting' : 'off';
     this.desktop
       .init()
@@ -213,7 +195,7 @@ export class VisionTargets {
   }
 
   get available(): boolean {
-    return !!this.client;
+    return hasGemini();
   }
 
   status(): VisionStatus {
@@ -221,7 +203,7 @@ export class VisionTargets {
   }
 
   setEnabled(on: boolean) {
-    this.enabled = on && !!this.client;
+    this.enabled = on && hasGemini();
     if (!this.enabled) {
       this.scanning?.abort();
       this.use(null);
@@ -311,7 +293,7 @@ export class VisionTargets {
     else if (!this.scanning) this.setState(this.enabled ? 'waiting' : 'off');
   }
 
-  // ---------------------------------------------------------------- asking Claude
+  // ---------------------------------------------------------------- asking Gemini
 
   private async scan(shot: Shot) {
     const ctl = new AbortController();
@@ -321,7 +303,7 @@ export class VisionTargets {
     const t0 = Date.now();
     try {
       const png = await this.desktop.screenshot();
-      const { boxes, usage } = await findElements(this.client!, png, this.desktop.shotSize, ctl.signal);
+      const { boxes, usage } = await findElements(png, this.desktop.shotSize, ctl.signal);
       this.st.costUsd += usage.input_tokens * VISION.USD_IN + usage.output_tokens * VISION.USD_OUT;
       const targets = toTargets(boxes, this.desktop.scale, this.desktop.width, this.desktop.height);
       this.st.scans++;
@@ -340,7 +322,7 @@ export class VisionTargets {
       this.scanning = null;
       if (ctl.signal.aborted) return;
       this.backoffUntil = Date.now() + VISION.ERROR_BACKOFF_MS;
-      this.fail(e instanceof Anthropic.APIError ? `Claude API ${e.status ?? ''}: ${e.message}` : (e as Error).message);
+      this.fail((e as Error).message);
     }
   }
 

@@ -1,8 +1,8 @@
-// Orion from the phone: Orion starts recording the laptop mic, OK sends what you said to Claude
-// (os-control-spike's computer-use agent), Cancel throws it away. While Claude works, Cancel stops it.
-// With SAFE_MODE=1 Claude may ask a yes/no question first: OK = yes, Cancel = no.
+// Orion from the phone: Orion starts recording the laptop mic, OK sends what you said to Gemini
+// (server/agent.ts, computer use on the desktop), Cancel throws it away. While Gemini works, Cancel
+// stops it. Orion may ask a yes/no question (an offer, or SAFE_MODE=1's checks): OK = yes, Cancel = no.
 //
-// Recording only ever goes to Claude on OK; after MAX_MS without one it's thrown away.
+// Recording only ever goes to Gemini on OK; after MAX_MS without one it's thrown away.
 // The mic and Scribe are server/speech.ts, shared with dictation.
 
 import { Agent, type AgentEvent, type AgentOpts } from './agent.ts';
@@ -54,7 +54,7 @@ export class Orion {
   constructor(
     agentOpts: AgentOpts,
     private stt: SttOpts,
-    private hasClaude: boolean,
+    private hasGemini: boolean,
     private onChange: () => void,
     private overlay: (m: OverlayMsg) => void,
     /** What was asked and how it ended, for screen memory's log. */
@@ -70,7 +70,7 @@ export class Orion {
 
   /** Why Orion can't run, or null. */
   get missing(): string | null {
-    if (!this.hasClaude) return 'no ANTHROPIC_API_KEY in .env';
+    if (!this.hasGemini) return 'no GEMINI_API_KEY in .env';
     if (!this.stt.elevenKey) return 'no ELEVENLABS_API_KEY in .env';
     return null;
   }
@@ -87,7 +87,7 @@ export class Orion {
         this.set('idle', `Mic failed: ${e.message}`, { state: 'error' });
       },
     );
-    // Never send on its own: Claude only acts on an explicit OK. A forgotten recording is dropped.
+    // Never send on its own: Gemini only acts on an explicit OK. A forgotten recording is dropped.
     this.capTimer = setTimeout(() => {
       this.discard();
       this.set('idle', 'Listening timed out, nothing sent.', { state: 'info', text: 'Orion: listening timed out (60 s), nothing sent' });

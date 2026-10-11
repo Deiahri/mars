@@ -62,10 +62,11 @@ export type DesktopOpts = {
   wake: boolean;
   /** Backboard: Orion's long-term memory of the person. Off without a key. */
   backboardKey?: string;
-  hasClaude: boolean;
-  /** AI snap targets (server/vision-targets.ts) on at start. Needs hasClaude. */
+  /** GEMINI_API_KEY is set: Orion, screen memory captions and AI snap targets all use Gemini. */
+  hasGemini: boolean;
+  /** AI snap targets (server/vision-targets.ts) on at start. Needs hasGemini. */
   aiSnap: boolean;
-  /** Screen memory recording on at start (server/memory/). Needs hasClaude. */
+  /** Screen memory recording on at start (server/memory/). Needs hasGemini. */
   memory: boolean;
 };
 
@@ -233,7 +234,7 @@ export function desktop(opts: DesktopOpts): Plugin {
       const overlay = startOverlay<OverlayMsg>(server);
       const pointer = new Pointer((b, at) => screenMemory.event('click', { x: at?.x, y: at?.y, text: b === 'left' ? '' : `${b} button` }));
       let mouse = true;
-      /** The phone's pointer is idle while Orion drives (it would fight Claude for the mouse). */
+      /** The phone's pointer is idle while Orion drives (it would fight Gemini for the mouse). */
       const pointerLive = () => mouse && w > 0 && (orion.state === 'idle' || orion.state === 'listening');
       // Zoom-click snapshots (the overlay is cleared first; give the compositor a frame to show that).
       const desk = new Desktop();
@@ -266,7 +267,7 @@ export function desktop(opts: DesktopOpts): Plugin {
           return (await desk.region(r.x, r.y, r.w, r.h)).toString('base64');
         },
       });
-      // Snap targets: the accessibility tree (exact), plus Claude's boxes where it has nothing.
+      // Snap targets: the accessibility tree (exact), plus Gemini's boxes where it has nothing.
       let a11y: Target[] = [];
       let a11yApp = '';
       let aiTargets: Target[] = [];
@@ -291,7 +292,7 @@ export function desktop(opts: DesktopOpts): Plugin {
           },
           onState: () => pushState(),
         },
-        { enabled: opts.aiSnap, hasClaude: opts.hasClaude },
+        { enabled: opts.aiSnap },
       );
 
       // Screen memory: what was on screen, for Orion to search and re-look at later.
@@ -305,7 +306,7 @@ export function desktop(opts: DesktopOpts): Plugin {
           // The wheel and the zoom panel cover the screen: nothing to remember there.
           busy: () => brain.ui === 'wheel' || brain.ui === 'zoom',
         },
-        { hasClaude: opts.hasClaude, session: session.type },
+        { hasGemini: opts.hasGemini, session: session.type },
       );
       const setMemory = async (on: boolean) => {
         await screenMemory.setEnabled(on);
@@ -360,7 +361,7 @@ export function desktop(opts: DesktopOpts): Plugin {
       if (person.on) person.refreshCount().catch((e) => console.warn('[backboard]', (e as Error).message));
       const agentOpts = { ...opts.agent, memory: () => (screenMemory.hasFrames ? screenMemory.memory : null), person };
       const voice = new Voice(opts.voice);
-      const orion = new Orion(agentOpts, opts.stt, opts.hasClaude, () => {
+      const orion = new Orion(agentOpts, opts.stt, opts.hasGemini, () => {
         // Orion owns the mic and the mouse while it listens and works.
         keys.suspend(micBusy());
         updateWake();
@@ -419,7 +420,7 @@ export function desktop(opts: DesktopOpts): Plugin {
         if (what === 'orion') orion.start();
         else dictation.start();
       };
-      /** The wheel's Snap: off → on → on + AI targets (when there's a Claude key) → off. */
+      /** The wheel's Snap: off → on → on + AI targets (when there's a Gemini key) → off. */
       const cycleSnap = () => {
         if (brain.snapOn && vision.available && !vision.enabled) return toggle('ai');
         if (vision.enabled) vision.setEnabled(false);
@@ -527,11 +528,11 @@ export function desktop(opts: DesktopOpts): Plugin {
           targets.setEnabled(brain.snapOn);
         } else if (what === 'ai') {
           if (!vision.available) {
-            overlay({ state: 'error', text: 'AI targets need ANTHROPIC_API_KEY in .env' });
+            overlay({ state: 'error', text: 'AI targets need GEMINI_API_KEY in .env' });
             return;
           }
           vision.setEnabled(!vision.enabled);
-          overlay({ state: 'info', text: vision.enabled ? '✦  AI targets on: Claude finds the buttons on screen' : '✦  AI targets off' });
+          overlay({ state: 'info', text: vision.enabled ? '✦  AI targets on: Gemini finds the buttons on screen' : '✦  AI targets off' });
           pushState();
         }
       };
@@ -564,7 +565,7 @@ export function desktop(opts: DesktopOpts): Plugin {
       });
 
       console.log(
-        `[gymote-desktop] screen ${w}×${h} (${session.type}); keys ${keys.status}; Orion ${orion.missing ?? 'ready'}; dictation ${dictation.missing ?? 'ready'}; voice ${voice.on ? 'on' : 'off'}; Hey Orion ${wake.status}; Backboard ${person.on ? 'on' : 'needs BACKBOARD_API_KEY'}; AI targets ${vision.available ? (vision.enabled ? 'on' : 'off') : 'need ANTHROPIC_API_KEY'}; screen memory ${screenMemory.missing ?? (opts.memory ? 'on' : 'off')}`,
+        `[gymote-desktop] screen ${w}×${h} (${session.type}); keys ${keys.status}; Orion ${orion.missing ?? 'ready'}; dictation ${dictation.missing ?? 'ready'}; voice ${voice.on ? 'on' : 'off'}; Hey Orion ${wake.status}; Backboard ${person.on ? 'on' : 'needs BACKBOARD_API_KEY'}; AI targets ${vision.available ? (vision.enabled ? 'on' : 'off') : 'need GEMINI_API_KEY'}; screen memory ${screenMemory.missing ?? (opts.memory ? 'on' : 'off')}`,
       );
     },
   };

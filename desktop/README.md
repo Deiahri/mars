@@ -23,7 +23,7 @@ While the phone drives, the normal arrow is hidden and a soft halo shows where y
 ```bash
 npm install
 npm run setup:keys           # once: Python venv + vosk + the 40 MB English model (keystroke mode)
-cp .env.example .env         # ANTHROPIC_API_KEY + ELEVENLABS_API_KEY, for Orion
+cp .env.example .env         # GEMINI_API_KEY + ELEVENLABS_API_KEY, for Orion
 npm run dev                  # 127.0.0.1:5176
 npm run app                  # second terminal: the control page in a Chrome window that keeps running when covered
 ngrok http 127.0.0.1:5176    # third terminal: phones only give motion data over https
@@ -61,7 +61,7 @@ The phone stands in for eye gaze, so the pointer follows gaze-UX practice: calm,
   Without it, the accessibility tree has nothing there (the page shows "0 targets"), and only the AI targets below apply.
 - **Off by default**: zoom is the main precision tool. Turn it on from the wheel (More › Settings › Snap) or **Snap to buttons** on the control page.
 
-**AI targets** (`server/vision-targets.ts`): Claude Sonnet 5.5 looks at a screenshot and lists what can be clicked, for apps that hide their accessibility tree (VS Code, Chrome without the flag, games).
+**AI targets** (`server/vision-targets.ts`): Gemini (`gemini-3.8-flash`, its native `box_2d` detection) looks at a screenshot and lists what can be clicked, for apps that hide their accessibility tree (VS Code, Chrome without the flag, games).
 - Accessibility targets are exact, so they win. An AI box is used only where no accessibility target overlaps it.
 - A look takes about 8–16 s and costs about $0.02–0.03 (a busy screen has 40–80 boxes). It only looks again when the screen really changes:
   - A tiny thumbnail is compared every 500 ms, ignoring the halo and the glow.
@@ -69,7 +69,7 @@ The phone stands in for eye gaze, so the pointer follows gaze-UX practice: calm,
   - The last 20 screens keep their boxes, so going back to a window or tab costs nothing.
 - Limits: one look at a time, 3 s apart, at most 6 a minute (worst case about $11 an hour on a screen that never stops changing). Looks only happen while someone is pointing: phone input in the last 30 s, not paused, snap on, no wheel or zoom open.
 - AI boxes don't train the drift correction, since they're approximate.
-- **AI targets** on the control page turns it on or off and shows the state, box count, looks, reuses and cost so far. `AI_SNAP=0` in `.env` starts with it off. It needs `ANTHROPIC_API_KEY`.
+- **AI targets** on the control page turns it on or off and shows the state, box count, looks, reuses and cost so far. `AI_SNAP=0` in `.env` starts with it off. It needs `GEMINI_API_KEY`. A look takes ~20–30 s (it runs in the background) and ~$0.02.
 - `npm run look` does one look at the current screen. It prints the boxes and writes the screenshot with them drawn on it to `/tmp/gymote-look.png`.
 
 ### The wheel
@@ -139,10 +139,10 @@ Turning keys off, starting Orion, or stopping the server lets go of anything hel
 
 ## Orion
 
-This is os-control-spike's agent: ElevenLabs Scribe turns your speech into text, then Claude computer use drives the desktop with xdotool and ffmpeg.
-- While Orion works, the phone's pointer and buttons are paused so they don't fight Claude.
-- The recording only goes to Claude when you press **OK**. If you never press it, the recording is thrown away after 60 s.
-- With `SAFE_MODE=1` in `.env`, Claude asks before risky actions. Answer on the phone: **Yes** is the OK button, **No** is Cancel.
+ElevenLabs Scribe turns your speech into text, then **Gemini computer use** (`gemini-3.8-flash`, the Interactions API's `computer_use` tool with `environment: "desktop"`) drives the desktop with xdotool and ffmpeg (`server/agent.ts`, `server/gemini.ts`; Gemini's 0–999 coordinates are mapped in `computer.ts` `geminiAction`). Thinking is set to `low` (`GEMINI_THINKING`): a step takes ~5 s, against ~45 s at the default. Gemini keeps the conversation on its side (`previous_interaction_id`). Its own safety checks (`require_confirmation`) come to you as Yes / No.
+- While Orion works, the phone's pointer and buttons are paused so they don't fight Gemini.
+- The recording only goes to Gemini when you press **OK**. If you never press it, the recording is thrown away after 60 s.
+- With `SAFE_MODE=1` in `.env`, Orion asks before risky actions. Answer on the phone: **Yes** is the OK button, **No** is Cancel.
 - With [screen memory](#screen-memory) on, Orion can also answer questions about earlier ("what was the error in my terminal earlier?") and find things to go back to ("reopen the page I was reading before lunch").
 - **"Hey Orion".** Say it, wait for the soft two-note chime, say what you want, then press **OK** on the phone (same as Menu › More › Orion). It's heard offline by Vosk (`server/wake.py` + `wake.ts`, the same engine as keystroke mode), with a tiny grammar plus sound-alike decoys ("hey Ryan", "Oreo", "now"…) so near-misses don't trigger it; nothing leaves the laptop until you press OK. Pause briefly after "Hey Orion": the recorder starts ~0.3 s after it. On at start (`WAKE=0` turns it off); toggles on the control page and in Settings › Voice ›. It pauses while Orion or dictation records and while Orion is talking, so it never hears itself. Needs `npm run setup:keys`.
 - **A conversation, not just commands.** Ask a question and Orion answers in a sentence or three. When there's an obvious next step ("Your essay is due Friday. Want me to open it?") it offers it: **Yes / No** on the phone, or just say "yes" / "no". Yes and it does it right away. Anything you say within 3 minutes of its last answer continues the same conversation, so "what's it about?" or "open it" knows what "it" is.
@@ -152,8 +152,8 @@ This is os-control-spike's agent: ElevenLabs Scribe turns your speech into text,
 
 Screen memory remembers what was on the screen. **Backboard** (`server/backboard.ts`) remembers *the person*, across restarts: people they mention, preferences, routines, and what they asked before.
 
-- Before each command, the most relevant memories are looked up (Backboard's semantic memory search) and handed to Claude ("What you know about this person"). That's how "message my sister" can work.
-- Claude has two tools: `remember_about_person` (it saves things like "their sister is Ana" or "they like zoom at 4×", and anything you ask it to remember) and `recall_about_person`.
+- Before each command, the most relevant memories are looked up (Backboard's semantic memory search) and handed to Gemini ("What you know about this person"). That's how "message my sister" can work.
+- Orion has two tools: `remember_about_person` (it saves things like "their sister is Ana" or "they like zoom at 4×", and anything you ask it to remember) and `recall_about_person`.
 - Every finished request is saved as a memory too ("Sat 9:14 AM: asked Orion “…” → …"), so the next session knows what you did before.
 - One Backboard assistant holds them all. Its id is kept in `data/backboard.json`. The control page shows how many memories there are.
 - Needs `BACKBOARD_API_KEY` in `.env` (app.backboard.io; new accounts get $5 of credit). Without it, Orion works as before.
@@ -162,7 +162,7 @@ Screen memory remembers what was on the screen. **Backboard** (`server/backboard
 
 Orion remembers what was on the screen, so you can ask about it later. This is the screen-memory spike merged in (`server/memory/`), with its database on **Tiger Data** (Tiger Cloud: Postgres + TimescaleDB + pgvector + BM25).
 
-- **Recording.** Every 10 s, plus about a second after each click, the screen is grabbed. It's kept only if it changed. The halo moving around doesn't count as a change, and neither do the wheel or the zoom panel. Kept frames are captioned by Claude Haiku 5.5 (app, activity, what the pointer was on, verbatim text) and embedded locally with Ollama (`embeddinggemma`). The cost is about $0.0005 a frame, and an idle screen keeps nothing.
+- **Recording.** Every 10 s, plus about a second after each click, the screen is grabbed. It's kept only if it changed. The halo moving around doesn't count as a change, and neither do the wheel or the zoom panel. Kept frames are captioned by Gemini (`gemini-3.8-flash`) (app, activity, what the pointer was on, verbatim text) and embedded locally with Ollama (`embeddinggemma`). The cost is about $0.002 a frame, and an idle screen keeps nothing.
 - **Stored in Tiger.** Screenshots stay on this laptop (`data/memory/shots/`). Their captions, embeddings and the action log go to Tiger Cloud:
   - `frames` and `events` are **hypertables** on time.
   - Captions are embedded with **pgvector** (HNSW, cosine) and indexed with **BM25** (`pg_textsearch`; plain Postgres full-text search if that extension isn't there).
@@ -171,11 +171,11 @@ Orion remembers what was on the screen, so you can ask about it later. This is t
 - **Asking.** Menu › More › Orion, then ask out loud. Orion gets four extra tools: `search_memory` (meaning + keywords), `memory_timeline` (what happened between two times), `memory_usage` (screen time and activity from the continuous aggregates) and `view_memory_screenshot` (re-opens the real screenshot, zoomed if needed, before quoting exact text). Your clicks, dictation and earlier Orion commands are logged too, so "what did I dictate into that email?" works. For a question about the past it answers from memory without touching the desktop.
 - **Off at start.** Use the control page's **Screen memory** button, or `MEMORY=1` in `.env` to start recording with the server. **Stop everything** turns it off too.
 - **Privacy.**
-  - Kept frames are sent to Anthropic to be captioned. Captions, embeddings and the action log are stored in your Tiger Cloud service; screenshots never leave the laptop.
+  - Kept frames are sent to Google (Gemini) to be captioned. Captions, embeddings and the action log are stored in your Tiger Cloud service; screenshots never leave the laptop.
   - Windows whose title matches `MEMORY_PRIVATE_TITLES` are never saved. By default that covers password managers, private browsing, "bank", chat apps (Discord, Slack, Signal, WhatsApp, Messenger, Telegram), and editors showing `.env`, secrets, credentials or API keys.
   - `touch data/memory/PAUSE` pauses recording; `rm` it to resume.
   - To forget everything: delete `data/memory/` and run `drop schema screen_memory cascade` on the Tiger service.
-- **Needs** `TIGER_DATABASE_URL` (a Tiger Cloud service's connection string; the free Shared tier works and has BM25). A new Tiger service first uses Tiger's own CA, then a public certificate, so both the public roots and `server/memory/tiger-ca.pem` are trusted (verified either way), Ollama running with `ollama pull embeddinggemma`, and `ANTHROPIC_API_KEY`. The schema is created on first start. Without Ollama, frames are still kept but captions fail; run `npm run memory:caption` later to catch up.
+- **Needs** `TIGER_DATABASE_URL` (a Tiger Cloud service's connection string; the free Shared tier works and has BM25). A new Tiger service first uses Tiger's own CA, then a public certificate, so both the public roots and `server/memory/tiger-ca.pem` are trusted (verified either way), Ollama running with `ollama pull embeddinggemma`, and `GEMINI_API_KEY`. The schema is created on first start. Without Ollama, frames are still kept but captions fail; run `npm run memory:caption` later to catch up.
 - **From the terminal:** `npm run memory:ask -- "what was I doing at 3?"` asks the same memory with read-only tools. `npm run test:memory` runs the tests (the database ones in a throwaway schema on Tiger).
 
 Why not stream video to a model? The pasted Gemini prototype sends 10 s MP4 batches. Change-gated stills cost less, need no Python or Chroma, and keep a real screenshot that Orion can zoom into when a caption isn't enough.
@@ -184,7 +184,7 @@ Why not stream video to a model? The pasted Gemini prototype sends 10 s MP4 batc
 
 - **Phone:** Menu › More › Pause, or Right (Cancel / Stop) during Orion or dictation.
 - **Control page:** **Stop everything** or <kbd>Esc</kbd> turns off the phone mouse, keys and screen memory, and cancels Orion. With the mouse off, the phone's **Menu** button (labelled "Mouse on") or the page's Phone mouse button turns it back on.
-- **`MAX_STEPS`** (default 30) caps Claude's turns per command.
+- **`MAX_STEPS`** (default 30) caps Gemini's turns per command.
 
 ## How it works
 
@@ -201,9 +201,10 @@ server/wake.py     "Hey Orion" + spoken yes/no, offline (Vosk), driven by server
 server/targets.py  AT-SPI: clickable rectangles in the active window, for snapping
 server/keys.ts     server/keys.py: arecord → Vosk (word list) → hold/tap/stop → xdotool key/keydown/keyup
 server/speech.ts   arecord + ElevenLabs Scribe, shared by:
-server/orion.ts      speech → server/agent.ts (Claude) → server/computer.ts
+server/orion.ts      speech → server/agent.ts (Gemini computer use) → server/computer.ts
+server/gemini.ts   the Gemini REST client: interact() (Interactions API) and generateJson() (structured output)
 server/dictation.ts  speech → xdotool type
-server/memory/     screen memory: recorder.ts (x11grab → change gate → caption.ts Haiku → embed.ts Ollama → db.ts Tiger Cloud),
+server/memory/     screen memory: recorder.ts (x11grab → change gate → caption.ts Gemini → embed.ts Ollama → db.ts Tiger Cloud),
                    memory.ts + tools.ts (hybrid search / timeline / usage / re-look, given to agent.ts)
 server/backboard.ts  Orion's long-term memory of the person (Backboard), recalled into each command
 server/voice.ts    Orion's answers out loud: ElevenLabs TTS → ffplay
@@ -229,7 +230,7 @@ server/overlay.py  the status pill: GTK + cairo, slides/fades in, resizes smooth
 ```bash
 npm run test:keys                                   # word → key logic
 npm run test:pointer                                # filter, lock + creep, spring, snap, dwell, wheel, zoom, scroll, click types, recal, AI merge (fake time)
-npm run look                                        # one AI-targets look at the screen, boxes drawn to /tmp/gymote-look.png (one Sonnet call)
+npm run look                                        # one AI-targets look at the screen, boxes drawn to /tmp/gymote-look.png (one Gemini call)
 GM_DEBUG_POINTER=1 npm run dev                      # log fixations, snaps, target scans and each jump's time to 90%
 GM_DRY_RUN=1 npm run dev                            # log pointer xdotool calls instead of running them
 GM_KEYS_SOURCE="cat clip.pcm" npm run dev           # feed keystroke mode 16 kHz mono s16le PCM instead of the mic
@@ -340,7 +341,7 @@ A `GM_DEBUG_KEYS` line reads like this. Audio time is how much mic audio had bee
 | Pointer drifts sideways over time | Compass heading drift. Press **Center** |
 | Keys button says n/a | Run `npm run setup:keys` and restart `npm run dev` |
 | Keys mishears in a noisy room | Speak the words crisply. Raise `STABLE_CHUNKS` in `server/keys.py` (fewer flips, +50 ms each) |
-| Orion says "no … key" | Put `ANTHROPIC_API_KEY` and `ELEVENLABS_API_KEY` in `.env` and restart |
+| Orion says "no … key" | Put `GEMINI_API_KEY` and `ELEVENLABS_API_KEY` in `.env` and restart |
 | Clicks land in the wrong place | Center first, then aim. The click lands where the pointer visibly is |
 | No halo or wheel, and the arrow stays | `halo.py` needs a compositor (GNOME has one) and system `python3-gi`. Check the server log for "halo.py exited" |
 | "0 targets" on the control page | That app hides its accessibility tree. See [Pointer → Snapping](#pointer) |

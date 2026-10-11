@@ -2,7 +2,7 @@
 // screen changed or the focused window did. Kept frames are captioned + embedded in the background,
 // so a slow API call never delays a capture. Ported from screen-memory/src/capture.ts.
 //
-// Off until switched on (control page, or MEMORY=1): kept frames go to Anthropic for captioning.
+// Off until switched on (control page, or MEMORY=1): kept frames go to Google (Gemini) for captioning.
 // Private windows (PRIVATE_TITLES) are never saved, and data/memory/PAUSE pauses it.
 
 import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
@@ -68,9 +68,9 @@ export class ScreenMemory {
   private dbError: string | null = null;
   private size: [number, number];
   private hooks: MemoryHooks;
-  private opts: { hasClaude: boolean; session: string };
+  private opts: { hasGemini: boolean; session: string };
 
-  constructor(size: [number, number], hooks: MemoryHooks, opts: { hasClaude: boolean; session: string }) {
+  constructor(size: [number, number], hooks: MemoryHooks, opts: { hasGemini: boolean; session: string }) {
     this.size = size;
     this.hooks = hooks;
     this.opts = opts;
@@ -93,7 +93,7 @@ export class ScreenMemory {
 
   /** Why it can't record at all, or null. */
   get missing(): string | null {
-    if (!this.opts.hasClaude) return 'needs ANTHROPIC_API_KEY in .env';
+    if (!this.opts.hasGemini) return 'needs GEMINI_API_KEY in .env';
     if (!TIGER_URL) return 'needs TIGER_DATABASE_URL in .env';
     if (this.dbError) return this.dbError;
     if (this.opts.session !== 'x11') return 'needs an X11 session';

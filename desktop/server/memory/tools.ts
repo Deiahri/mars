@@ -1,22 +1,22 @@
-// Screen memory as tools for a Claude loop: Orion's agent (server/agent.ts) and the memory-only
-// `npm run memory:ask`. Claude finds candidate moments by caption (cheap), then re-looks at the
+// Screen memory as tools for a Gemini loop: Orion's agent (server/agent.ts) and the memory-only
+// `npm run memory:ask`. The model finds candidate moments by caption (cheap), then re-looks at the
 // real screenshot when the caption isn't enough. From screen-memory/src/agent.ts.
 
-import type Anthropic from '@anthropic-ai/sdk';
+import type { Part } from '../gemini.ts';
 import { localTime } from './config.ts';
 import type { Memory } from './memory.ts';
 
-type Tool = Anthropic.Beta.Messages.BetaTool;
-type ToolResult = Anthropic.Beta.Messages.BetaToolResultBlockParam;
+/** A tool declaration (gemini.ts fnTool turns it into a Gemini function). */
+export type ToolDef = { name: string; description: string; parameters: Record<string, unknown> };
 
 const TIME = 'Local time, "YYYY-MM-DD HH:MM:SS" (same format the results use).';
 
-export const MEMORY_TOOLS: Tool[] = [
+export const MEMORY_TOOLS: ToolDef[] = [
   {
     name: 'search_memory',
     description:
       'Semantic + keyword search over captions of earlier screenshots of this desktop. Returns the best-matching moments (frame id, time span, window, app, a one-line activity, what the pointer was on, verbatim key text), plus matching things the person dictated or asked Orion. Captions are short and lossy: use view_memory_screenshot to read exact details.',
-    input_schema: {
+    parameters: {
       type: 'object',
       properties: {
         query: { type: 'string', description: 'What to look for, in natural language or exact strings (file names, error text, sites).' },
@@ -33,7 +33,7 @@ export const MEMORY_TOOLS: Tool[] = [
     name: 'memory_timeline',
     description:
       'What was on screen between two times, oldest first (thinned evenly to at most 40 moments), and what the person did then (clicks, dictation, Orion commands). Use for "what was I doing at/around/between ..." questions where there is no topic to search for.',
-    input_schema: {
+    parameters: {
       type: 'object',
       properties: {
         since: { type: 'string', description: TIME },
@@ -47,7 +47,7 @@ export const MEMORY_TOOLS: Tool[] = [
     name: 'memory_usage',
     description:
       'Screen time per app (minutes, number of distinct screens) and actions per hour (clicks, dictations, Orion requests) between two times. Use for "how long was I on …", "what did I spend the morning on", "when was I most active" questions. Screen time is approximate: it counts how long each kept screen stayed unchanged.',
-    input_schema: {
+    parameters: {
       type: 'object',
       properties: {
         since: { type: 'string', description: TIME },
@@ -61,7 +61,7 @@ export const MEMORY_TOOLS: Tool[] = [
     name: 'view_memory_screenshot',
     description:
       'Look at the stored screenshot of an earlier moment (a frame id from search_memory / memory_timeline), to read exact text or check details the caption left out. Optionally zoom into region [x0, y0, x1, y1] (screenshot pixels) to read small text. This shows the past, not the current screen.',
-    input_schema: {
+    parameters: {
       type: 'object',
       properties: {
         id: { type: 'integer' },
@@ -90,7 +90,7 @@ function parseTime(s: unknown, field: string): number | undefined {
 }
 
 /** Runs one memory tool call. Throws on bad input (the caller turns that into an is_error result). */
-export async function runMemoryTool(mem: Memory, name: string, input: Record<string, unknown>): Promise<Exclude<ToolResult['content'], string | undefined>> {
+export async function runMemoryTool(mem: Memory, name: string, input: Record<string, unknown>): Promise<Part[]> {
   switch (name) {
     case 'search_memory': {
       const { frames, did } = await mem.search(String(input.query ?? ''), {
@@ -127,7 +127,7 @@ export async function runMemoryTool(mem: Memory, name: string, input: Record<str
       const pointer = f.px === null ? '' : `, pointer at (${f.px}, ${f.py})`;
       return [
         { type: 'text', text: `Frame #${id} (the past, not the current screen), on screen ${localTime(f.ts)} → ${localTime(f.last_seen)}, window "${f.win_title}"${pointer}${region ? `, zoomed to ${JSON.stringify(region)}` : ''}` },
-        { type: 'image', source: { type: 'base64', media_type: img.media_type, data: img.data.toString('base64') } },
+        { type: 'image', data: img.data.toString('base64'), mime_type: img.media_type },
       ];
     }
     default:

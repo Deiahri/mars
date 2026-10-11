@@ -7,17 +7,18 @@ import { signaling } from './server/signaling.ts';
 export default defineConfig(({ mode }) => {
   // .env holds the API keys; they stay on the server side (no VITE_ prefix).
   const env = loadEnv(mode, process.cwd(), '');
-  for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN']) if (env[k]) process.env[k] = env[k];
+  for (const k of ['GEMINI_API_KEY', 'GEMINI_MODEL']) if (env[k]) process.env[k] = env[k];
 
   return {
     plugins: [
       // WebRTC signaling between the laptop page and the phone, behind the pairing token.
       signaling(token),
-      // Moves/clicks the real pointer (xdotool), keystroke mode (Vosk), Orion (Claude computer use).
+      // Moves/clicks the real pointer (xdotool), keystroke mode (Vosk), Orion (Gemini computer use).
       desktop({
         agent: {
-          model: env.ANTHROPIC_MODEL || 'claude-opus-5-5',
-          effort: (env.ANTHROPIC_EFFORT || 'low') as AgentOpts['effort'],
+          model: env.GEMINI_MODEL || 'gemini-3.8-flash',
+          // 'low' keeps a step at ~5 s; Gemini's default thinking took ~45 s for one key press.
+          thinking: (env.GEMINI_THINKING || 'low') as AgentOpts['thinking'],
           maxSteps: Number(env.MAX_STEPS) || 30,
           // Off unless SAFE_MODE=1: no ask-first questions, no mouse-takeover aborts.
           safeMode: env.SAFE_MODE === '1' || env.SAFE_MODE === 'true',
@@ -37,10 +38,10 @@ export default defineConfig(({ mode }) => {
         backboardKey: env.BACKBOARD_API_KEY || undefined,
         // "Hey Orion" (offline Vosk) on at start. WAKE=0: off until turned on.
         wake: env.WAKE !== '0' && env.WAKE !== 'false',
-        hasClaude: Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN),
-        // Claude finds snap targets in screenshots (Sonnet 5.5, a few cents per new screen). AI_SNAP=0: off at start.
+        hasGemini: Boolean(process.env.GEMINI_API_KEY),
+        // Gemini finds snap targets in screenshots (box_2d detection, a fraction of a cent per new screen). AI_SNAP=0: off at start.
         aiSnap: env.AI_SNAP !== '0' && env.AI_SNAP !== 'false',
-        // Screen memory (server/memory/) recording at start. Off unless MEMORY=1: kept frames go to Anthropic.
+        // Screen memory (server/memory/) recording at start. Off unless MEMORY=1: kept frames go to Google (Gemini).
         memory: env.MEMORY === '1' || env.MEMORY === 'true',
       }),
     ],

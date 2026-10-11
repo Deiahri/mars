@@ -285,7 +285,7 @@ function render() {
   toggleButton('dwell', state.dwell);
   toggleButton('snap', state.snap);
   toggleButton('ai', state.ai !== 'off' && state.ai !== 'unavailable');
-  if (state.ai === 'unavailable') $('ai').textContent = 'needs ANTHROPIC_API_KEY';
+  if (state.ai === 'unavailable') $('ai').textContent = 'needs GEMINI_API_KEY';
 }
 
 function toggleButton(id: string, on: boolean) {

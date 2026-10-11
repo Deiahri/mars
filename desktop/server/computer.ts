@@ -3,9 +3,9 @@
 // Only works on an X11 session: on GNOME Wayland, xdotool reaches XWayland windows only and
 // x11grab sees a black/partial screen. checkSession() reports which one we're on.
 //
-// Coordinates from Claude are in screenshot space. Screenshots are downscaled only when the
-// screen is bigger than the model's comfortable size (1366x768 needs none), and `scale` maps
-// them back.
+// Orion's actions come from Gemini's computer-use tool (geminiAction): coordinates are 0-999 across
+// the screen, mapped here onto the same xdotool helpers. Screenshots are downscaled only when the
+// screen is big (1366x768 needs none); `scale` maps screenshot px back to screen px.
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -22,7 +22,7 @@ const MAX_PIXELS = 1_150_000;
 // Give the UI a moment to react before the next action or screenshot.
 const SETTLE_MS = 350;
 
-// Names Claude sometimes uses that xdotool spells differently. xdotool already understands
+// Key names models use that xdotool spells differently. xdotool already understands
 // ctrl/alt/shift/super and every X keysym (Return, Tab, Page_Down, F5...).
 const KEY_ALIASES: Record<string, string> = {
   enter: 'Return',
@@ -101,7 +101,7 @@ export class Desktop {
     this.scale = Math.min(1, MAX_EDGE / Math.max(w, h), Math.sqrt(MAX_PIXELS / (w * h)));
   }
 
-  /** Size of the screenshots Claude sees (its coordinate space). */
+  /** Size of the screenshots the model sees. */
   get shotSize(): Point {
     return [Math.round(this.width * this.scale), Math.round(this.height * this.scale)];
   }
@@ -182,6 +182,71 @@ export class Desktop {
   private async click(input: Record<string, unknown>, button: number, repeat: number): Promise<void> {
     const click = ['click', ...(repeat > 1 ? ['--repeat', String(repeat), '--delay', '80'] : []), String(button)];
     await xdo([...this.moveArgs(input), ...this.withMods(modifiers(input.text), click)]);
+  }
+
+  /**
+   * Runs one of Gemini's computer-use actions (environment "desktop"). x/y are 0-999 across the
+   * screen. Mapped onto execute() below, so clicks, drags and keys behave the same as before.
+   */
+  async geminiAction(name: string, a: Record<string, unknown>, signal?: AbortSignal): Promise<ActionResult> {
+    const [w, h] = this.shotSize;
+    const pt = (x: unknown, y: unknown, what = 'x, y'): Point => {
+      if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) throw new Error(`${what} must be numbers 0-999`);
+      const c = (v: number) => Math.min(999, Math.max(0, v)) / 1000;
+      return [Math.round(c(x) * w), Math.round(c(y) * h)];
+    };
+    const at = () => ({ coordinate: pt(a.x, a.y) });
+    switch (name) {
+      case 'click':
+        return this.execute('left_click', at(), signal);
+      case 'double_click':
+      case 'triple_click':
+      case 'middle_click':
+      case 'right_click':
+        return this.execute(name, at(), signal);
+      case 'move':
+        return this.execute('mouse_move', at(), signal);
+      case 'mouse_down':
+        if (a.x !== undefined) await this.execute('mouse_move', at(), signal);
+        return this.execute('left_mouse_down', {}, signal);
+      case 'mouse_up':
+        if (a.x !== undefined) await this.execute('mouse_move', at(), signal);
+        return this.execute('left_mouse_up', {}, signal);
+      case 'drag_and_drop':
+        return this.execute('left_click_drag', { start_coordinate: pt(a.start_x, a.start_y, 'start_x, start_y'), coordinate: pt(a.end_x, a.end_y, 'end_x, end_y') }, signal);
+      case 'type': {
+        const r = await this.execute('type', { text: a.text }, signal);
+        return a.press_enter ? this.execute('key', { text: 'Return' }, signal) : r;
+      }
+      case 'press_key':
+        return this.execute('key', { text: String(a.key ?? '') }, signal);
+      case 'hotkey': {
+        const keys = Array.isArray(a.keys) ? a.keys.map(String) : String(a.keys ?? '').split(/[+ ]/);
+        return this.execute('key', { text: keys.filter(Boolean).join('+') }, signal);
+      }
+      case 'key_down':
+      case 'key_up': {
+        const k = xkey(String(a.key ?? ''));
+        if (!k) throw new Error('key must name a key');
+        await xdo([name === 'key_down' ? 'keydown' : 'keyup', ...k.split('+')]);
+        await sleep(SETTLE_MS);
+        return { text: 'OK' };
+      }
+      case 'scroll': {
+        // Wheel notches: magnitude_in_wheel_clicks if given (Gemini on the desktop uses it), else
+        // magnitude_in_pixels (default 300) at ~100 px a notch.
+        const notches = a.magnitude_in_wheel_clicks !== undefined ? Number(a.magnitude_in_wheel_clicks) : Number(a.magnitude_in_pixels ?? 300) / 100;
+        const n = Math.max(1, Math.min(30, Math.round(notches) || 3));
+        const where = a.x !== undefined && a.y !== undefined ? at() : {};
+        return this.execute('scroll', { ...where, scroll_direction: a.direction, scroll_amount: n }, signal);
+      }
+      case 'wait':
+        return this.execute('wait', { duration: Number(a.seconds ?? 1) }, signal);
+      case 'take_screenshot':
+        return this.execute('screenshot', {}, signal);
+      default:
+        throw new Error(`"${name}" is not supported on this desktop`);
+    }
   }
 
   /**

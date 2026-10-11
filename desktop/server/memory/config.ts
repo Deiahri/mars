@@ -24,12 +24,9 @@ export const PRIVATE_TITLES = new RegExp(
   'i',
 );
 
-export const CAPTION_MODEL = env.MEMORY_CAPTION_MODEL ?? 'claude-haiku-5-5';
 export const EMBED_MODEL = env.EMBED_MODEL ?? 'embeddinggemma';
 export const OLLAMA_URL = env.OLLAMA_URL ?? 'http://127.0.0.1:11434';
 
-// $/MTok for the running cost (Haiku 5.5, prompts under 100K).
-export const CAPTION_PRICE = { input: 0.1, output: 0.5 };
 
 /** Local "YYYY-MM-DD HH:MM:SS"; Date.parse reads it back as local time. */
 export function localTime(ms: number): string {

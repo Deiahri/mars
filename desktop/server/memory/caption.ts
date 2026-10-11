@@ -1,14 +1,12 @@
-// Turns one kept screenshot into a small searchable record: Haiku reads the screen and returns
+// Turns one kept screenshot into a small searchable record: Gemini reads the screen and returns
 // structured JSON; we flatten it to text and embed it locally. The screenshot itself stays on
-// disk for Orion to re-look at. Ported from screen-memory/src/caption.ts.
+// disk for Orion to re-look at. Ported from screen-memory/src/caption.ts (it used Claude Haiku).
 
 import { readFileSync } from 'node:fs';
-import Anthropic from '@anthropic-ai/sdk';
-import { CAPTION_MODEL, CAPTION_PRICE, DATA_DIR } from './config.ts';
+import { GEMINI, generateJson } from '../gemini.ts';
+import { DATA_DIR } from './config.ts';
 import type { Caption, Frame, Store } from './db.ts';
 import { embedOne } from './embed.ts';
-
-let client: Anthropic | null = null;
 
 const SCHEMA = {
   type: 'object',
@@ -38,28 +36,14 @@ const SYSTEM = `You index screenshots of a person's Linux desktop for their own 
 - Never invent text you can't read. If the screen shows a password, token, or card number, never copy it; write "[secret]" instead.`;
 
 export async function caption(jpg: Buffer, f: Pick<Frame, 'win_title' | 'win_class' | 'px' | 'py'>): Promise<{ caption: Caption; input: number; output: number }> {
-  client ??= new Anthropic();
   const pointer = f.px === null || f.py === null ? 'Pointer position unknown.' : `Pointer at (${f.px}, ${f.py}) in screen pixels.`;
-  const msg = await client.messages.create({
-    model: CAPTION_MODEL,
-    max_tokens: 4000,
-    output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } },
+  const r = await generateJson<Caption>({
     system: SYSTEM,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: jpg.toString('base64') } },
-          { type: 'text', text: `Focused window: "${f.win_title}" (class ${f.win_class || 'unknown'}). ${pointer}` },
-        ],
-      },
-    ],
+    prompt: `Focused window: "${f.win_title}" (class ${f.win_class || 'unknown'}). ${pointer}`,
+    image: { data: jpg.toString('base64'), mime_type: 'image/jpeg' },
+    schema: SCHEMA,
   });
-  if (msg.stop_reason === 'refusal') throw new Error(`caption refused (${msg.stop_details?.category ?? 'no category'})`);
-  if (msg.stop_reason === 'max_tokens') throw new Error('caption hit max_tokens');
-  const text = msg.content.find((b) => b.type === 'text');
-  if (!text || text.type !== 'text') throw new Error('caption returned no text');
-  return { caption: JSON.parse(text.text) as Caption, input: msg.usage.input_tokens, output: msg.usage.output_tokens };
+  return { caption: r.data, input: r.input, output: r.output };
 }
 
 /** What gets embedded and keyword-matched. */
@@ -77,7 +61,7 @@ export function searchText(c: Caption, title: string): string {
 }
 
 export function cost(input: number, output: number): number {
-  return (input * CAPTION_PRICE.input + output * CAPTION_PRICE.output) / 1e6;
+  return input * GEMINI.USD_IN + output * GEMINI.USD_OUT;
 }
 
 /** Caption + embed one stored frame. Errors are recorded on the row (retry with `npm run memory:caption`). */

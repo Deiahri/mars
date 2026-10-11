@@ -1,28 +1,21 @@
 // One AI-targets look at the current screen, to judge the boxes: npm run look [-- out.png]
-// Prints what Claude found and how long it took, and writes the screenshot with the boxes drawn on
-// it (default /tmp/gymote-look.png). Costs one Claude Sonnet 5.5 call, a few cents.
+// Prints what Gemini found and how long it took, and writes the screenshot with the boxes drawn on
+// it (default /tmp/gymote-look.png). Costs one Gemini call, a fraction of a cent.
 
-import Anthropic from '@anthropic-ai/sdk';
+import '../server/memory/config.ts'; // loads .env (GEMINI_API_KEY)
 import { execFile } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { Desktop } from '../server/computer.ts';
 import { findElements, toTargets, VISION } from '../server/vision-targets.ts';
 
 const out = process.argv[2] ?? '/tmp/gymote-look.png';
-// The keys live in .env, like for the dev server.
-try {
-  for (const line of readFileSync(new URL('../.env', import.meta.url), 'utf8').split('\n')) {
-    const m = /^\s*(ANTHROPIC_[A-Z_]+)\s*=\s*(.*?)\s*$/.exec(line);
-    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2');
-  }
-} catch {}
 
 const desktop = new Desktop();
 await desktop.init();
 const png = await desktop.screenshot();
 const t0 = Date.now();
-const { boxes, usage } = await findElements(new Anthropic(), png, desktop.shotSize);
+const { boxes, usage } = await findElements(png, desktop.shotSize);
 const ms = Date.now() - t0;
 const targets = toTargets(boxes, desktop.scale, desktop.width, desktop.height);
 for (const t of targets) console.log(`${String(t.x).padStart(5)} ${String(t.y).padStart(4)}  ${String(t.w).padStart(4)}×${String(t.h).padEnd(4)} ${t.id.split(':').slice(2).join(':')}`);
