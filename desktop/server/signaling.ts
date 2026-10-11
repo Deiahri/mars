@@ -20,9 +20,14 @@
 //
 // Also: GET /api/link/public-url → the URL the phone should open (the ngrok https tunnel, with the
 // token), for the QR code on the laptop page. Phones only give motion data over https.
+//
+// Relay fallback: Wi-Fi that isolates clients (campus guest networks) blocks the peer-to-peer link
+// entirely. Then both pages send their link traffic as `link:relay` over Vite's own HMR websocket
+// (the phone's comes through the ngrok tunnel), and this server forwards screen ↔ remote. Those
+// messages need the token too.
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { Plugin } from 'vite';
+import type { Plugin, ViteDevServer, WebSocketClient } from 'vite';
 
 type Session = { id: number; offer: string; answer: string | null; renew: boolean };
 
@@ -65,10 +70,31 @@ async function ngrokUrl(port: string): Promise<string | null> {
   }
 }
 
+type RelayMsg = { from: 'screen' | 'remote'; kind: string; data?: unknown; k?: string };
+
+/** Forwards `link:relay` messages from each side to every client of the other side. */
+function relay(server: ViteDevServer, token: string) {
+  const sides = { screen: new Set<WebSocketClient>(), remote: new Set<WebSocketClient>() };
+  server.ws.on('link:relay', (msg: RelayMsg, client: WebSocketClient) => {
+    if (msg?.k !== token) return;
+    if (msg.from !== 'screen' && msg.from !== 'remote') return;
+    const own = sides[msg.from];
+    if (!own.has(client)) {
+      own.add(client);
+      client.socket.on('close', () => own.delete(client));
+    }
+    const out = { from: msg.from, kind: msg.kind, data: msg.data };
+    for (const c of msg.from === 'screen' ? sides.remote : sides.screen) {
+      if (c.socket.readyState === 1) c.send('link:relay', out);
+    }
+  });
+}
+
 export function signaling(token: string): Plugin {
   return {
     name: 'link-signaling',
     configureServer(server) {
+      relay(server, token);
       // Mounted at /api/link; connect strips the prefix, so req.url is e.g. "/offer?after=3".
       server.middlewares.use('/api/link', async (req, res, next) => {
         const url = new URL(req.url ?? '/', 'http://local');

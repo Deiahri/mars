@@ -9,7 +9,11 @@
     "setup:keys": "python3 -m venv .venv && .venv/bin/pip install vosk && node scripts/fetch-vosk.mjs",
     "test:keys": "node --experimental-strip-types --no-warnings scripts/keys-test.ts",
     "test:pointer": "node --experimental-strip-types --no-warnings scripts/pointer-test.ts",
-    "build": "tsc && vite build"
+    "build": "tsc && vite build",
+    "look": "node --experimental-strip-types --no-warnings scripts/vision-look.ts",
+    "test:memory": "node --experimental-strip-types --no-warnings scripts/memory-test.ts",
+    "memory:ask": "node --experimental-strip-types --no-warnings scripts/memory-ask.ts",
+    "memory:caption": "node --experimental-strip-types --no-warnings scripts/memory-caption.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",

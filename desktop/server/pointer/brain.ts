@@ -2,56 +2,69 @@
 // and the on-screen overlay (server/halo.py) out. Every TICK_MS:
 //
 //   raw + recalibration offset ─► Motion (One Euro + I-VT fixation lock)
-//     ─► Snapper (bubble cursor over the strip + accessible targets, with hysteresis)
+//     ─► Snapper (bubble cursor over the wheel's tiles, or accessible targets when Snap is on)
 //     ─► Spring (critically damped) ─► xdotool mousemove
-//     ─► Dwell (ring, adaptive time) ─► the current mode's action
+//     ─► Dwell (ring, adaptive time) ─► a click
 //
-// The action strip on the right edge (Pause, then the modes) is part of the overlay, which can't be
-// clicked, so selections over it are caught here and never reach the app underneath.
+// Three buttons, like the two or three switches a gaze user has: Left, Right and Menu (`wheel`).
+// What they do depends on `ui`:
+//   normal  Left clicks (hold to drag), Right right-clicks, Menu opens the wheel.
+//   wheel   the accessibility wheel (wheel.ts) around the pointer. Left picks the tile under the
+//           pointer, Right goes back, Menu closes. The real pointer stays where it was.
+//   zoom    zoom-click (zoom.ts): a frozen k× snapshot; Left / Right click the real point under
+//           the cursor, then it closes. Menu cancels.
+//   scroll  Left scrolls up and Right down, repeating while held; Menu ends it.
+// A click type picked from the wheel (double, triple, middle, drag) is one-shot: the next Left.
+// The overlay can't be clicked, so presses meant for the wheel never reach the app underneath.
 
-import type { PointerMode } from '../../src/net/link.ts';
+import type { Pending, PhoneButton, PointerUi } from '../../src/net/link.ts';
 import { Dwell } from './dwell.ts';
 import { Motion, MOTION, Spring, dist, type MotionOut, type Pt } from './motion.ts';
 import { SNAP, Snapper, snapPoint, type Target } from './snap.ts';
+import { buildMenu, menuAt, wheelLayout, type MenuState, type WheelTile } from './wheel.ts';
+import { ZOOM, clampToPanel, toReal, zoomLayout, type Rect, type ZoomView } from './zoom.ts';
 
-export type Mode = PointerMode;
-export type Btn = 'left' | 'right';
+export type Btn = 'left' | 'right' | 'middle';
 
-export const MODE_LABEL: Record<Mode, string> = {
-  left: 'Click',
-  right: 'Right click',
+export const PENDING_LABEL: Record<Pending, string> = {
   double: 'Double click',
-  drag: 'Drag',
-  scroll: 'Scroll',
+  triple: 'Triple click',
+  middle: 'Middle click',
+  drag: 'Grab',
 };
 
 export const BRAIN = {
   TICK_MS: 10,
-  /** Strip buttons need at least this long a dwell, however short the adaptive time gets. */
-  STRIP_MIN_MS: 700,
-  /** Pause / resume always takes this long a dwell. */
-  PAUSE_MS: 1000,
+  /** Wheel tiles need at least this long a dwell, however short the adaptive time gets. */
+  WHEEL_MIN_MS: 700,
   /** Each selection on a small target moves the offset this fraction of the way to its center. */
   RECAL_GAIN: 0.2,
   RECAL_MAX_DEG: 3,
-  /** Scroll mode: looking within this many ° above/below the anchor doesn't scroll. */
-  SCROLL_DEADZONE_DEG: 1.5,
-  /** Scroll mode ends when you look this far to the side. */
-  SCROLL_EXIT_DEG: 6,
-  /** Wheel clicks per second per ° past the dead zone, and the cap. */
-  SCROLL_RATE: 4,
-  SCROLL_MAX_PER_S: 20,
+  /** Scroll mode: wheel notches per second while Left / Right is held (the phone's slider). */
+  SCROLL_PER_S: 8,
+  SCROLL_MIN_PER_S: 1,
+  SCROLL_MAX_PER_S: 30,
+  /** A press scrolls one notch at once; holding repeats after this long, like a key. */
+  SCROLL_REPEAT_MS: 250,
+  /**
+   * px. While a button is held, real moves are split into steps no longer than this: an app needs a
+   * stream of small motions to start and steer a drag (GTK abandons a drag that gets one big jump;
+   * measured: steps of 50 px still drop, a single 100 px jump never does).
+   */
+  DRAG_STEP_PX: 12,
+  /** After a zoom click the cursor stays on the clicked point until the aim moves this far. */
+  PIN_RELEASE_DEG: 1.5,
   /** After a dwell selection, moving this far from it lets the same thing be selected again. */
   UNSPEND_DEG: 2,
   /** After tracking is lost this long, the OS arrow comes back (someone may want the real mouse). */
   LOST_ARROW_MS: 5000,
-  /** The strip brightens when the pointer is this close. */
-  STRIP_NEAR_PX: 140,
+  /** Someone is pointing if raw input came this recently (a phone lying still sends nothing). */
+  ACTIVE_MS: 30_000,
 };
 
 export interface PointerOut {
   moveTo(x: number, y: number): void;
-  button(b: Btn, down: boolean): void;
+  button(b: 'left' | 'right', down: boolean): void;
   click(b: Btn, repeat?: number): void;
   scroll(dir: 'up' | 'down'): void;
   releaseAll(): void;
@@ -61,7 +74,7 @@ export type BrainHooks = {
   out: PointerOut;
   /** One message for server/halo.py. */
   halo: (m: object) => void;
-  /** Mode, dwell, snap or pause changed. */
+  /** ui, pending, pause, dwell or snap changed (the phone's button labels follow). */
   onState: () => void;
   /** Something was clicked or scrolled: the accessible targets may have moved. */
   rescan: () => void;
@@ -69,20 +82,25 @@ export type BrainHooks = {
   info: (text: string) => void;
   /** Mouse on and Orion not driving. */
   live: () => boolean;
+  /** The wheel items the server owns: Dictate, Orion, Keys, Snap (+ AI targets). */
+  menuAction: (id: string) => void;
+  /** What their labels show. */
+  menuState: () => Pick<MenuState, 'ai' | 'keys' | 'orion' | 'dictate'>;
+  /** A PNG (base64) of this screen region, taken with our overlay hidden; null if it failed. */
+  zoomShot: (r: Rect) => Promise<string | null>;
   now?: () => number;
   /** false: no internal timer (tests call tick() themselves). */
   timer?: boolean;
 };
 
-export type StripButton = Target & { label: string };
-
 export type HaloFrame = {
   arrow: boolean;
   cursor: Pt | null;
   style: 'halo' | 'lost' | 'scroll';
-  glow: { x: number; y: number; w: number; h: number } | null;
-  ring: { x: number; y: number; p: number; kind: 'dwell' | 'drag' | 'pause' } | null;
-  strip: { show: boolean; near: boolean; mode: Mode; paused: boolean; hover: string | null; dragging: boolean };
+  glow: Rect | null;
+  ring: { x: number; y: number; p: number; kind: 'dwell' | 'drag' } | null;
+  wheel: { tiles: WheelTile[]; hover: string | null } | null;
+  zoom: ZoomView | null;
   chip: string | null;
   scroll: 'up' | 'down' | null;
 };
@@ -101,32 +119,18 @@ export type PointerStatus = {
 
 const debug = !!process.env.GM_DEBUG_POINTER;
 const r1 = (v: number) => Math.round(v);
-const isStrip = (t: Target | null) => !!t && t.id.startsWith('strip:');
-
-/** The strip: Pause on top, then the modes, centered on the right edge. Sizes scale with the screen. */
-export function stripLayout(w: number, h: number): { box: Target; buttons: StripButton[] } {
-  const size = Math.min(72, Math.max(48, Math.round(h * 0.075)));
-  const gap = Math.round(size * 0.14);
-  const items: Array<[string, string]> = [['pause', 'Pause'], ...(Object.keys(MODE_LABEL) as Mode[]).map((m): [string, string] => [m, MODE_LABEL[m]])];
-  const bw = size + 2 * gap;
-  const bh = items.length * size + (items.length - 1) * gap + 2 * gap;
-  const box = { id: 'strip', x: w - bw - 6, y: Math.round((h - bh) / 2), w: bw, h: bh };
-  const buttons = items.map(([id, label], i) => ({
-    id: `strip:${id}`,
-    label,
-    x: box.x + gap,
-    y: box.y + gap + i * (size + gap),
-    w: size,
-    h: size,
-  }));
-  return { box, buttons };
-}
+const isTile = (t: Target | null) => !!t && t.id.startsWith('wheel:');
 
 export class PointerBrain {
-  mode: Mode = 'left';
+  ui: PointerUi = 'normal';
+  pending: Pending | null = null;
+  dragging = false;
   dwellOn = false;
-  snapOn = true;
+  /** Off by default: zoom is the main precision tool, snapping is opt-in from the wheel. */
+  snapOn = false;
   paused = false;
+  zoomK = ZOOM.DEFAULT_K;
+  scrollPerS = BRAIN.SCROLL_PER_S;
   readonly dwell = new Dwell();
 
   private readonly w: number;
@@ -136,23 +140,33 @@ export class PointerBrain {
   private readonly motion: Motion;
   private readonly spring = new Spring();
   private readonly snapper = new Snapper();
-  private readonly strip: { box: Target; buttons: StripButton[] };
   private targets: Target[] = [];
   private app = '';
   private offset: Pt = { x: 0, y: 0 };
   private tracking = true;
+  /** now() of the last raw sample. */
+  private rawAt = -Infinity;
   private lostAt = 0;
   private wasLive = false;
-  private dragging = false;
-  private scrolling: { anchor: Pt; acc: number; moved: boolean; dir: 'up' | 'down' | null } | null = null;
+  /** The open wheel: where it was opened, which submenus are open, its tiles. */
+  private wheel: { at: Pt; path: string[]; tiles: WheelTile[] } | null = null;
+  /** The zoom panel once its snapshot is in (null while it's being taken). */
+  private zoom: ZoomView | null = null;
+  /** Bumped whenever zoom opens or closes, so a late snapshot for a cancelled zoom is ignored. */
+  private zoomSeq = 0;
+  /** After a zoom click: the cursor stays on the clicked point until the aim moves away. */
+  private pin: { at: Pt; aim: Pt } | null = null;
+  private scrollHeld: { btn: 'left' | 'right'; dir: 'up' | 'down'; t0: number; acc: number } | null = null;
   /** Phone buttons whose press went through to the desktop (so their release must too). */
-  private phoneHeld = new Set<Btn>();
+  private phoneHeld = new Set<'left' | 'right'>();
   private last: MotionOut | null = null;
   private lastTick: number | null = null;
   private lastMoved: Pt | null = null;
   private lastFixId = 0;
   private dwellFix: { id: string; at: Pt } | null = null;
   private lastFired: Pt | null = null;
+  /** After a button press, dwell waits until the aim moves UNSPEND_DEG away (it would click again). */
+  private dwellHeld = false;
   private lastFrame = '';
   private lastDebug = '';
   private step: { t0: number; to: Pt; d0: number } | null = null;
@@ -165,8 +179,6 @@ export class PointerBrain {
     this.now = hooks.now ?? (() => performance.now());
     // Until the page says otherwise: the phone 1.5 screen widths away.
     this.motion = new Motion(w, h, 1.5 * w * Math.tan(Math.PI / 180));
-    this.strip = stripLayout(w, h);
-    hooks.halo({ layout: { box: this.strip.box, buttons: this.strip.buttons } });
     if (hooks.timer !== false) this.timer = setInterval(() => this.tick(this.now()), BRAIN.TICK_MS);
   }
 
@@ -185,10 +197,15 @@ export class PointerBrain {
     if (Number.isFinite(ppd) && ppd > 1) this.motion.pxPerDeg = ppd;
   }
 
+  setScrollSpeed(perS: number) {
+    if (Number.isFinite(perS)) this.scrollPerS = Math.min(BRAIN.SCROLL_MAX_PER_S, Math.max(BRAIN.SCROLL_MIN_PER_S, perS));
+  }
+
   raw(x: number, y: number) {
     if (!this.tracking) return;
     const p = { x: x + this.offset.x, y: y + this.offset.y };
     const t = this.now();
+    this.rawAt = t;
     if (debug && !this.step && this.spring.pos) {
       const d0 = dist(p, this.spring.pos);
       if (d0 > 2 * this.pxPerDeg) this.step = { t0: t, to: p, d0 };
@@ -217,6 +234,17 @@ export class PointerBrain {
     this.offset = { x: 0, y: 0 };
     this.snapper.clear();
     this.dwell.cancel();
+    this.pin = null;
+  }
+
+  /** Someone is pointing right now: tracking, with input in the last ACTIVE_MS. */
+  get active(): boolean {
+    return this.tracking && this.now() - this.rawAt < BRAIN.ACTIVE_MS;
+  }
+
+  /** The target the pointer is snapped to (the overlay glows around it), if any. */
+  get snapped(): Target | null {
+    return this.snapper.current;
   }
 
   setTargets(targets: Target[], app: string) {
@@ -231,7 +259,7 @@ export class PointerBrain {
   toggleDwell() {
     this.dwellOn = !this.dwellOn;
     this.dwell.cancel();
-    this.hooks.info(this.dwellOn ? `◎  Dwell on: hold still ${this.dwell.ms} ms to ${MODE_LABEL[this.mode].toLowerCase()}` : '◎  Dwell off');
+    this.hooks.info(this.dwellOn ? `◎  Dwell on: hold still ${this.dwell.ms} ms to click` : '◎  Dwell off');
     this.hooks.onState();
   }
 
@@ -242,64 +270,82 @@ export class PointerBrain {
     this.hooks.onState();
   }
 
-  setMode(mode: Mode) {
-    if (mode === this.mode || !(mode in MODE_LABEL)) return;
-    this.stopActions();
-    this.mode = mode;
-    this.dwell.regret(this.now());
-    this.hooks.info(`🖱  Mode: ${MODE_LABEL[mode]}`);
-    this.hooks.onState();
-  }
-
   togglePause() {
-    this.paused = !this.paused;
+    const paused = !this.paused;
     this.stopActions();
-    if (this.paused) this.dwell.regret(this.now());
-    this.hooks.info(this.paused ? '⏸  Paused: look around freely. Look at Resume to carry on' : '▶  Resumed');
+    this.paused = paused;
+    if (paused) this.dwell.regret(this.now());
+    this.hooks.info(paused ? '⏸  Paused: point anywhere freely. Press Menu to carry on' : '▶  Resumed');
     this.hooks.onState();
   }
 
-  /** Lets go of a drag and ends scrolling (mode change, pause, mouse off, Stop). */
+  /** Lets go of everything held and closes the wheel, zoom and scrolling (pause, mouse off, Orion, Stop). */
   stopActions() {
     if (this.dragging) this.hooks.out.button('left', false);
     this.dragging = false;
-    this.scrolling = null;
+    this.pending = null;
+    this.scrollHeld = null;
+    this.wheel = null;
+    this.zoom = null;
+    this.zoomSeq++;
+    this.pin = null;
+    this.ui = 'normal';
     for (const b of this.phoneHeld) this.hooks.out.button(b, false);
     this.phoneHeld.clear();
     this.dwell.cancel();
+    this.hooks.onState();
   }
 
   /** Stop everything (the control page's Stop): also leaves pause. */
   stop() {
     this.stopActions();
-    if (this.paused) {
-      this.paused = false;
-      this.hooks.onState();
-    }
+    this.paused = false;
+    this.hooks.onState();
   }
 
-  /** The phone's Click / Right click. Click does the current mode; in Click mode, holding it drags. */
-  phoneButton(b: Btn, down: boolean) {
+  /** The phone's Left, Right and Menu buttons. */
+  phoneButton(b: PhoneButton, down: boolean) {
     if (!down) {
+      if (b === 'wheel') return;
+      if (this.scrollHeld?.btn === b) this.scrollHeld = null;
       if (this.phoneHeld.delete(b)) this.hooks.out.button(b, false);
       return;
     }
     if (!this.hooks.live() || !this.tracking) return;
-    const tgt = this.snapper.current;
-    if (isStrip(tgt)) {
-      if (b === 'left') this.stripAction(tgt!.id);
+    this.holdDwell();
+    if (this.paused) {
+      if (b === 'wheel') this.togglePause();
       return;
     }
-    if (this.paused) return;
-    if (b === 'right' || this.mode === 'left') {
-      if (this.scrolling) return this.endScroll();
-      this.recalibrate(tgt);
-      this.phoneHeld.add(b);
-      this.hooks.out.button(b, true);
+    if (this.ui === 'wheel') return this.wheelButton(b);
+    if (this.ui === 'zoom') return this.zoomButton(b);
+    if (this.ui === 'scroll') {
+      if (b === 'wheel') return this.setUi('normal', '↕  Scrolling done');
+      const dir = b === 'left' ? 'up' : 'down';
+      this.scrollHeld = { btn: b, dir, t0: this.now(), acc: 0 };
+      this.hooks.out.scroll(dir);
       this.hooks.rescan();
       return;
     }
-    this.select(tgt, false);
+    if (b === 'wheel') return this.openWheel();
+    const tgt = this.snapper.current;
+    if (b === 'right' && (this.pending || this.dragging)) return this.cancelPending();
+    if (b === 'left' && this.pending) return this.select(tgt, false);
+    // A plain press: held as long as the phone button is, so holding Left drags.
+    this.recalibrate(tgt);
+    this.phoneHeld.add(b);
+    this.hooks.out.button(b, true);
+    this.hooks.rescan();
+  }
+
+  /** What each phone button does right now (Orion and mouse-off are the server's, in plugin.ts). */
+  labels(): { left: string; right: string; wheel: string } {
+    if (this.paused) return { left: '', right: '', wheel: 'Resume' };
+    if (this.ui === 'wheel') return { left: 'Select', right: this.wheel?.path.length ? 'Back' : 'Close', wheel: 'Close' };
+    const left = this.dragging ? 'Drop' : this.pending ? PENDING_LABEL[this.pending] : 'Click';
+    if (this.ui === 'zoom') return { left, right: 'Right click', wheel: 'Cancel zoom' };
+    if (this.ui === 'scroll') return { left: '▲ Up', right: '▼ Down', wheel: 'Done' };
+    return { left, right: this.dragging ? 'Drop' : this.pending ? 'Cancel' : 'Right click', wheel: 'Menu' };
   }
 
   // ---------------------------------------------------------------- the tick
@@ -326,8 +372,7 @@ export class PointerBrain {
         arrow: lost && t - this.lostAt > BRAIN.LOST_ARROW_MS,
         cursor: this.round(this.spring.pos),
         style: lost ? 'lost' : 'halo',
-        strip: this.stripState(this.spring.pos, null),
-        chip: lost ? 'tracking lost' : null,
+        chip: lost ? 'tracking lost' : this.chip(),
       });
     }
     this.last = m;
@@ -338,65 +383,63 @@ export class PointerBrain {
       if (m.anchor) this.dwell.settled(m.anchor, t, ppd);
     }
 
-    // What can capture the pointer: only Resume while paused, only the strip while scrolling.
-    const pause = this.strip.buttons[0];
-    const candidates = this.paused ? [pause] : this.scrolling || !this.snapOn ? this.strip.buttons : [...this.strip.buttons, ...this.targets];
-    const tgt = this.snapper.pick(m.aim, candidates, ppd);
+    const ui = this.ui;
+    const zoom = ui === 'zoom' ? this.zoom : null;
+    // The snapshot is being taken: show nothing (it would be in the picture), move nothing.
+    if (ui === 'zoom' && !zoom) return this.send({ ...this.hiddenFrame(), arrow: false });
 
+    // What can capture the pointer: the wheel's tiles while it's open, else the targets if Snap is on.
+    const candidates = this.paused ? [] : ui === 'wheel' ? this.wheel!.tiles : ui === 'normal' && this.snapOn ? this.targets : [];
+    const tgt = candidates.length ? this.snapper.pick(m.aim, candidates, ppd) : (this.snapper.clear(), null);
+
+    if (this.pin && dist(m.aim, this.pin.aim) > BRAIN.PIN_RELEASE_DEG * ppd) this.pin = null;
     let cursor = this.spring.pos ?? m.aim;
     if (!this.paused) {
-      const goal = this.scrolling ? this.scrolling.anchor : tgt ? snapPoint(m.aim, tgt) : m.aim;
+      const goal = zoom ? clampToPanel(zoom, m.aim) : this.pin ? this.pin.at : tgt ? snapPoint(m.aim, tgt) : m.aim;
       cursor = this.spring.step(goal, dtMs / 1000);
-      const p = this.round(cursor);
-      if (!this.lastMoved || p.x !== this.lastMoved.x || p.y !== this.lastMoved.y) {
-        this.lastMoved = p;
-        this.hooks.out.moveTo(Math.min(this.w - 1, Math.max(0, p.x)), Math.min(this.h - 1, Math.max(0, p.y)));
-      }
+      // The real pointer: under the zoom panel it's the real point beneath the cursor; while the
+      // wheel is open it stays put (a drag in progress mustn't move).
+      if (ui !== 'wheel') this.moveReal(zoom ? toReal(zoom, cursor) : cursor);
     }
     // The aim, not the cursor: while paused the cursor stays put but you still have to look away.
     if (this.lastFired && dist(m.aim, this.lastFired) > BRAIN.UNSPEND_DEG * ppd) {
       this.lastFired = null;
+      this.dwellHeld = false;
       this.dwell.unspend();
     }
-    if (this.scrolling) this.scrollTick(m, dtMs);
+    if (this.scrollHeld) this.scrollTick(t, dtMs);
 
-    if (this.dwellOn) {
+    if (this.dwellOn && !this.paused && ui !== 'scroll') {
       let key: string | null = null;
       let need = this.dwell.ms;
-      if (tgt) {
-        key = tgt.id;
-        if (tgt === pause) need = BRAIN.PAUSE_MS;
-        else if (isStrip(tgt)) need = Math.max(need, BRAIN.STRIP_MIN_MS);
-      } else if (this.scrolling) {
-        // Settling back on the anchor ends scrolling, once you've scrolled at all.
-        key = this.scrolling.moved && !this.scrolling.dir ? 'scroll:end' : null;
-      } else if (!this.paused && m.anchor) {
-        key = this.fixKey(m);
-      }
+      if (ui === 'wheel') {
+        key = tgt?.id ?? null;
+        need = Math.max(need, BRAIN.WHEEL_MIN_MS);
+      } else if (tgt) key = tgt.id;
+      else if (m.anchor) key = this.fixKey(m);
+      if (this.dwellHeld) key = null;
       if (this.dwell.update(key, dtMs, need)) {
         this.lastFired = { ...m.aim };
-        this.select(tgt, true);
+        if (ui === 'wheel') this.wheelPick(tgt!.id.slice('wheel:'.length));
+        else if (ui === 'zoom') this.zoomClick('left', true);
+        else this.select(tgt, true);
       }
     }
 
     this.debugTick(t, m, tgt);
-    const ringAt = this.paused ? { x: pause.x + pause.w / 2, y: pause.y + pause.h / 2 } : cursor;
     this.send({
       arrow: this.paused,
       cursor: this.paused || tgt ? null : this.round(cursor),
-      style: this.scrolling ? 'scroll' : 'halo',
-      glow: tgt ? { x: tgt.x, y: tgt.y, w: tgt.w, h: tgt.h } : null,
+      style: this.ui === 'scroll' ? 'scroll' : 'halo',
+      glow: tgt && !isTile(tgt) ? { x: tgt.x, y: tgt.y, w: tgt.w, h: tgt.h } : null,
       ring:
-        this.dwellOn && this.dwell.progress > 0
-          ? {
-              ...this.round(ringAt),
-              p: Math.round(this.dwell.progress * 100) / 100,
-              kind: this.dwell.key === pause.id ? 'pause' : this.dragging ? 'drag' : 'dwell',
-            }
+        this.dwellOn && this.dwell.progress > 0 && !this.paused
+          ? { ...this.round(cursor), p: Math.round(this.dwell.progress * 100) / 100, kind: this.dragging ? 'drag' : 'dwell' }
           : null,
-      strip: this.stripState(cursor, tgt),
-      chip: null,
-      scroll: this.scrolling?.dir ?? null,
+      wheel: this.ui === 'wheel' && this.wheel ? { tiles: this.wheel.tiles, hover: isTile(tgt) ? tgt!.id : null } : null,
+      zoom: this.ui === 'zoom' ? this.zoom : null,
+      chip: this.chip(),
+      scroll: this.scrollHeld?.dir ?? null,
     });
   }
 
@@ -415,60 +458,210 @@ export class PointerBrain {
     };
   }
 
-  // ---------------------------------------------------------------- actions
+  // ---------------------------------------------------------------- clicks
 
-  /** A selection (dwell, or the phone's Click outside Click mode). */
+  /** A selection: dwell, or Left while a click type is pending. */
   private select(tgt: Target | null, byDwell: boolean) {
-    if (isStrip(tgt)) return this.stripAction(tgt!.id);
-    if (this.paused) return;
-    if (this.scrolling) return this.endScroll();
-    const t = this.now();
     const at = this.spring.pos ?? this.last?.aim;
     if (!at) return;
     this.recalibrate(tgt);
+    this.clickNow('left');
+    if (byDwell) this.dwell.selected(at, this.now(), this.pxPerDeg);
+  }
+
+  /** One click where the real pointer is: the pending click type for Left (then it's used up). */
+  private clickNow(b: 'left' | 'right') {
     const out = this.hooks.out;
-    if (this.mode === 'left') out.click('left');
-    else if (this.mode === 'right') out.click('right');
-    else if (this.mode === 'double') out.click('left', 2);
-    else if (this.mode === 'drag') {
+    const p = b === 'left' ? this.pending : null;
+    if (b === 'right') out.click('right');
+    else if (p === 'drag') {
       this.dragging = !this.dragging;
       out.button('left', this.dragging);
-      this.hooks.info(this.dragging ? '✊  Dragging: select again to drop' : '✋  Dropped');
-    } else if (this.mode === 'scroll') {
-      this.scrolling = { anchor: { ...at }, acc: 0, moved: false, dir: null };
-      this.hooks.info('↕  Scrolling: look above or below to scroll, look back here to stop');
+      this.hooks.info(this.dragging ? '✊  Dragging: press Left to drop' : '✋  Dropped');
+    } else if (p === 'double') out.click('left', 2);
+    else if (p === 'triple') out.click('left', 3);
+    else if (p === 'middle') out.click('middle');
+    else out.click('left');
+    if (p) {
+      if (!this.dragging) this.pending = null;
+      this.hooks.onState();
     }
-    if (byDwell) this.dwell.selected(at, t, this.pxPerDeg);
     this.hooks.rescan();
   }
 
-  private stripAction(id: string) {
-    if (id === 'strip:pause') this.togglePause();
-    else if (!this.paused) this.setMode(id.slice('strip:'.length) as Mode);
+  private setPending(p: Pending) {
+    this.pending = p;
+    this.hooks.info(`🖱  Next click: ${PENDING_LABEL[p].toLowerCase()}${p === 'drag' ? ' (Left grabs, Left again drops)' : ''}`);
+    this.hooks.onState();
   }
 
-  private endScroll() {
-    this.scrolling = null;
-    this.hooks.info('↕  Scrolling stopped');
+  /** Right while a click type is pending: forget it (and drop anything being dragged). */
+  private cancelPending() {
+    if (this.dragging) this.hooks.out.button('left', false);
+    this.hooks.info(this.dragging ? '✋  Dropped' : '🖱  Cancelled');
+    this.dragging = false;
+    this.pending = null;
+    this.hooks.onState();
   }
 
-  private scrollTick(m: MotionOut, dtMs: number) {
-    const s = this.scrolling!;
-    const ppd = this.pxPerDeg;
-    const dx = (m.filtered.x - s.anchor.x) / ppd;
-    const dy = (m.filtered.y - s.anchor.y) / ppd;
-    if (Math.abs(dx) > BRAIN.SCROLL_EXIT_DEG) return this.endScroll();
-    const past = Math.abs(dy) - BRAIN.SCROLL_DEADZONE_DEG;
-    if (past <= 0) {
-      s.dir = null;
-      s.acc = 0;
-      return;
-    }
-    s.moved = true;
-    s.dir = dy < 0 ? 'up' : 'down';
-    s.acc += (Math.min(BRAIN.SCROLL_MAX_PER_S, past * BRAIN.SCROLL_RATE) * dtMs) / 1000;
+  private scrollTick(t: number, dtMs: number) {
+    const s = this.scrollHeld!;
+    if (t - s.t0 < BRAIN.SCROLL_REPEAT_MS) return;
+    s.acc += (this.scrollPerS * dtMs) / 1000;
     if (s.acc >= 1) this.hooks.rescan();
     for (; s.acc >= 1; s.acc--) this.hooks.out.scroll(s.dir);
+  }
+
+  // ---------------------------------------------------------------- the wheel
+
+  private setUi(ui: PointerUi, note?: string) {
+    this.ui = ui;
+    this.snapper.clear();
+    this.dwell.cancel();
+    if (note) this.hooks.info(note);
+    this.hooks.onState();
+  }
+
+  private menuState(): MenuState {
+    return { dwell: this.dwellOn, snap: this.snapOn, zoomK: this.zoomK, ...this.hooks.menuState() };
+  }
+
+  private openWheel() {
+    const at = this.spring.pos ?? this.last?.aim;
+    if (!at) return;
+    this.wheel = { at: this.round(at), path: [], tiles: [] };
+    this.layoutWheel();
+    this.setUi('wheel');
+  }
+
+  private layoutWheel() {
+    const wh = this.wheel!;
+    const items = menuAt(buildMenu(this.menuState()), wh.path) ?? [];
+    wh.tiles = wheelLayout(wh.at, items, wh.path.length ? 'Back' : 'Close', this.w, this.h).tiles;
+  }
+
+  private closeWheel() {
+    this.wheel = null;
+    this.setUi('normal');
+  }
+
+  private wheelButton(b: PhoneButton) {
+    if (b === 'wheel') return this.closeWheel();
+    if (b === 'right') return this.wheelPick('back');
+    const tgt = this.snapper.current;
+    if (isTile(tgt)) this.wheelPick(tgt!.id.slice('wheel:'.length));
+  }
+
+  private wheelPick(id: string) {
+    const wh = this.wheel;
+    if (!wh) return;
+    if (id === 'back') {
+      if (!wh.path.length) return this.closeWheel();
+      wh.path.pop();
+      this.layoutWheel();
+      return this.setUi('wheel');
+    }
+    const item = (menuAt(buildMenu(this.menuState()), wh.path) ?? []).find((i) => i.id === id);
+    if (!item) return;
+    if (item.sub) {
+      wh.path.push(id);
+      this.layoutWheel();
+      return this.setUi('wheel');
+    }
+    const at = wh.at;
+    this.closeWheel();
+    this.menuAction(id, at);
+  }
+
+  private menuAction(id: string, at: Pt) {
+    switch (id) {
+      case 'zoom':
+        return void this.openZoom(at);
+      case 'scroll':
+        return this.setUi('scroll', '↕  Scrolling: Left scrolls up, Right down. Menu when done');
+      case 'double':
+      case 'triple':
+      case 'middle':
+      case 'drag':
+        return this.setPending(id);
+      case 'pause':
+        return this.togglePause();
+      case 'dwell':
+        return this.toggleDwell();
+      case 'zoomk': {
+        const levels = ZOOM.LEVELS;
+        this.zoomK = levels[(levels.indexOf(this.zoomK) + 1) % levels.length];
+        this.hooks.info(`🔍  Zoom ${this.zoomK}×`);
+        return this.hooks.onState();
+      }
+      default:
+        return this.hooks.menuAction(id); // dictate, orion, keys, snap
+    }
+  }
+
+  // ---------------------------------------------------------------- zoom-click
+
+  private async openZoom(at: Pt) {
+    const view = zoomLayout(at, this.zoomK, this.w, this.h);
+    const seq = ++this.zoomSeq;
+    this.zoom = null;
+    this.setUi('zoom');
+    // Clear the overlay now: the snapshot mustn't have the wheel or the halo in it.
+    this.send({ ...this.hiddenFrame(), arrow: false });
+    const png = await this.hooks.zoomShot(view.from).catch(() => null);
+    if (seq !== this.zoomSeq || this.ui !== 'zoom') return; // cancelled meanwhile
+    if (!png) return this.setUi('normal', '🔍  Zoom failed: no screenshot');
+    this.hooks.halo({ zoomImage: png });
+    this.zoom = view;
+    this.hooks.onState();
+  }
+
+  private closeZoom(note?: string) {
+    this.zoom = null;
+    this.zoomSeq++;
+    this.setUi('normal', note);
+  }
+
+  private zoomButton(b: PhoneButton) {
+    if (b === 'wheel') return this.closeZoom('🔍  Zoom cancelled');
+    if (this.zoom) this.zoomClick(b, false);
+  }
+
+  /** A click at the real point under the cursor; the panel closes and the cursor waits there. */
+  private zoomClick(b: 'left' | 'right', byDwell: boolean) {
+    const z = this.zoom;
+    const cur = this.spring.pos;
+    if (!z || !cur) return;
+    const real = toReal(z, cur);
+    this.moveReal(real, true);
+    this.clickNow(b);
+    if (byDwell) this.dwell.selected(real, this.now(), this.pxPerDeg);
+    this.closeZoom();
+    this.spring.jump(real);
+    this.pin = { at: real, aim: { ...(this.last?.aim ?? cur) } };
+  }
+
+  // ---------------------------------------------------------------- helpers
+
+  /** A button was pressed: dwell mustn't select the same spot again (a second click, or the drop right after a grab). */
+  private holdDwell() {
+    const at = this.last?.aim ?? this.spring.pos;
+    if (!at) return;
+    this.dwell.cancel();
+    this.dwellHeld = true;
+    this.lastFired = { ...at };
+  }
+
+  private moveReal(p: Pt, force = false) {
+    const q = { x: Math.min(this.w - 1, Math.max(0, r1(p.x))), y: Math.min(this.h - 1, Math.max(0, r1(p.y))) };
+    const from = this.lastMoved;
+    if (!force && from && q.x === from.x && q.y === from.y) return;
+    if (from && (this.dragging || this.phoneHeld.size)) {
+      const n = Math.ceil(dist(from, q) / BRAIN.DRAG_STEP_PX);
+      for (let i = 1; i < n; i++) this.hooks.out.moveTo(r1(from.x + ((q.x - from.x) * i) / n), r1(from.y + ((q.y - from.y) * i) / n));
+    }
+    this.lastMoved = q;
+    this.hooks.out.moveTo(q.x, q.y);
   }
 
   /**
@@ -478,7 +671,8 @@ export class PointerBrain {
    */
   private recalibrate(tgt: Target | null) {
     const m = this.last;
-    if (!tgt || isStrip(tgt) || !m) return;
+    // AI-found boxes (server/vision-targets.ts) are approximate: they mustn't teach the offset.
+    if (!tgt || isTile(tgt) || tgt.id.startsWith('ai:') || !m) return;
     const ppd = this.pxPerDeg;
     const small = 2 * SNAP.SNAP_DEG * ppd;
     if (tgt.w > small || tgt.h > small) return;
@@ -501,24 +695,18 @@ export class PointerBrain {
 
   // ---------------------------------------------------------------- overlay
 
-  private stripState(cursor: Pt, tgt: Target | null): HaloFrame['strip'] {
-    const b = this.strip.box;
-    const near =
-      cursor.x > b.x - BRAIN.STRIP_NEAR_PX && cursor.y > b.y - BRAIN.STRIP_NEAR_PX && cursor.y < b.y + b.h + BRAIN.STRIP_NEAR_PX;
-    return { show: true, near, mode: this.mode, paused: this.paused, hover: isStrip(tgt) ? tgt!.id : null, dragging: this.dragging };
+  /** A reminder under the pointer of what the buttons do now. */
+  private chip(): string | null {
+    if (this.paused) return 'Paused · Menu resumes';
+    if (this.ui === 'scroll') return 'Scroll · Left = up · Right = down · Menu: done';
+    if (this.ui !== 'normal') return null;
+    if (this.dragging) return 'Dragging · Left drops';
+    if (this.pending) return `Next: ${PENDING_LABEL[this.pending].toLowerCase()} · Right cancels`;
+    return null;
   }
 
   private hiddenFrame(): HaloFrame {
-    return {
-      arrow: true,
-      cursor: null,
-      style: 'halo',
-      glow: null,
-      ring: null,
-      strip: { show: false, near: false, mode: this.mode, paused: this.paused, hover: null, dragging: false },
-      chip: null,
-      scroll: null,
-    };
+    return { arrow: true, cursor: null, style: 'halo', glow: null, ring: null, wheel: null, zoom: null, chip: null, scroll: null };
   }
 
   private send(f: HaloFrame) {

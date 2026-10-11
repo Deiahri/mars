@@ -22,26 +22,20 @@
         <button id="center" type="button" class="center">Center</button>
       </header>
 
-      <section class="mouse">
-        <button id="left" type="button" class="click">Click<small id="mode-label" class="mode-label"></small></button>
-        <button id="right" type="button" class="click">Right<br />click</button>
+      <section class="buttons">
+        <button id="left" type="button" class="click">Click</button>
+        <button id="right" type="button" class="click">Right click</button>
+        <button id="wheel" type="button" class="click wheel">Menu</button>
       </section>
 
-      <section class="toggles">
-        <button id="mouse" type="button" class="toggle">Mouse <b id="mouse-state">on</b></button>
-        <button id="keys" type="button" class="toggle">Keys <b id="keys-state">off</b></button>
-        <button id="dwell" type="button" class="toggle">Dwell <b id="dwell-state">off</b></button>
-      </section>
+      <aside id="speed-box" class="speed">
+        <small>scroll</small>
+        <input id="speed" type="range" min="1" max="30" step="1" value="8" aria-label="Scroll speed" />
+        <small><b id="speed-val">8</b>/s</small>
+      </aside>
+
+      <p id="orion-text" class="orion-text"></p>
       <p id="heard" class="heard"></p>
-
-      <section class="orion">
-        <p id="orion-text" class="orion-text"></p>
-        <button id="orion" type="button" class="orion-btn">Orion</button>
-        <div id="choice" class="choice" hidden>
-          <button id="ok" type="button" class="ok">OK</button>
-          <button id="cancel" type="button" class="cancel">Cancel</button>
-        </div>
-      </section>
     </main>
 
     <script type="module" src="/src/remote/main.ts"></script>

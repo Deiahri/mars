@@ -1,12 +1,13 @@
 // The phone remote: GymoteRemote does the gyroscope → screen-pixel math; the buttons go to the laptop
-// over the reliable events channel. The phone only asks: the laptop's server decides and sends back
-// the state (mouse / keys / Orion), which is what the buttons show.
+// over the reliable events channel. Three buttons, like the two or three switches a gaze user has:
+// Left, Right and Menu (the accessibility wheel, drawn on the laptop's screen). The phone only asks:
+// the laptop's server decides what each button means right now and sends the labels back.
 //
 // The startup and Gymote bug workarounds are from gymote-playground (see its README).
 
 import './remote.css';
 import Gymote, { type GymoteRemote } from 'gymote';
-import { startRemote, type LinkStatus, type PointerMode, type RemoteState } from '../net/link';
+import { isUp, startRemote, type LinkStatus, type RemoteState } from '../net/link';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -15,6 +16,7 @@ const STATUS_TEXT: Record<LinkStatus, string> = {
   waiting: 'waiting for the laptop…',
   connecting: 'connecting…',
   connected: 'connected',
+  relayed: 'connected (relay)',
   lost: 'link lost, reconnecting…',
 };
 
@@ -78,10 +80,24 @@ async function keepAwake() {
   });
 }
 
+const SPEED_KEY = 'gm:scrollPerS';
+
 function run(remote: GymoteRemote, token: string) {
   const link = startRemote(token);
   let state: RemoteState | null = null;
   let heardTimer = 0;
+
+  // Scroll speed: kept on the phone, sent on every change and whenever the laptop's state arrives
+  // (a restarted server has forgotten it).
+  const speed = $<HTMLInputElement>('speed');
+  speed.value = safeGet(SPEED_KEY) ?? speed.value;
+  const sendSpeed = () => link.send({ type: 'scroll-speed', perS: Number(speed.value) });
+  speed.addEventListener('input', () => {
+    $('speed-val').textContent = speed.value;
+    safeSet(SPEED_KEY, speed.value);
+    sendSpeed();
+  });
+  $('speed-val').textContent = speed.value;
 
   remote._onDataChange = (buf) => link.sendPointer(buf);
 
@@ -90,6 +106,7 @@ function run(remote: GymoteRemote, token: string) {
     if (msg.type === 'distance') remote.updateScreenDistance(msg.px);
     if (msg.type === 'center') center();
     if (msg.type === 'state') {
+      if (!state) sendSpeed();
       state = msg.state;
       render(state);
     }
@@ -107,14 +124,7 @@ function run(remote: GymoteRemote, token: string) {
   };
   $('center').addEventListener('click', center);
 
-  holdButton($('left'), (down) => link.send({ type: 'button', button: 'left', down }));
-  holdButton($('right'), (down) => link.send({ type: 'button', button: 'right', down }));
-  tap($('mouse'), () => link.send({ type: 'toggle', what: 'mouse' }));
-  tap($('keys'), () => link.send({ type: 'toggle', what: 'keys' }));
-  tap($('dwell'), () => link.send({ type: 'toggle', what: 'dwell' }));
-  tap($('orion'), () => link.send({ type: 'orion', action: 'start' }));
-  tap($('ok'), () => link.send({ type: 'orion', action: 'ok' }));
-  tap($('cancel'), () => link.send({ type: 'orion', action: 'cancel' }));
+  for (const b of ['left', 'right', 'wheel'] as const) holdButton($(b), (down) => link.send({ type: 'button', button: b, down }));
 
   remote.start();
 
@@ -122,11 +132,11 @@ function run(remote: GymoteRemote, token: string) {
   setInterval(() => {
     const status = link.status();
     if (status !== lastStatus) {
-      if (status === 'connected') navigator.vibrate?.(30);
+      if (isUp(status) && !(lastStatus && isUp(lastStatus))) navigator.vibrate?.(30);
       lastStatus = status;
     }
-    $('status').textContent = status === 'connected' && state?.paused ? 'connected · paused' : STATUS_TEXT[status];
-    $('dot').className = `dot ${status === 'connected' ? 'ok' : status === 'lost' ? 'bad' : ''}`;
+    $('status').textContent = isUp(status) && state?.paused ? `${STATUS_TEXT[status]} · paused` : STATUS_TEXT[status];
+    $('dot').className = `dot ${isUp(status) ? 'ok' : status === 'lost' ? 'bad' : ''}`;
   }, 200);
 }
 
@@ -134,37 +144,45 @@ const ORION_HINT: Partial<Record<RemoteState['orion'], string>> = {
   listening: 'Listening… say what to do, then OK.',
   transcribing: 'Transcribing…',
 };
-
-/** Shown under Click when it does something other than a plain click (picked on the screen's strip). */
-const MODE_HINT: Record<PointerMode, string> = {
-  left: '',
-  right: 'right click',
-  double: 'double click',
-  drag: 'drag / drop',
-  scroll: 'scroll',
+const DICTATION_HINT: Partial<Record<RemoteState['dictation'], string>> = {
+  listening: 'Dictating… speak, then Type it.',
+  transcribing: 'Transcribing…',
 };
 
-function render(s: RemoteState) {
-  const pointerLive = s.mouse && (s.orion === 'idle' || s.orion === 'listening');
-  $('mode-label').textContent = s.paused ? 'paused' : MODE_HINT[s.mode];
-  $('dwell').classList.toggle('on', s.dwell);
-  $('dwell-state').textContent = s.dwell ? 'on' : 'off';
-  $<HTMLButtonElement>('left').disabled = !pointerLive;
-  $<HTMLButtonElement>('right').disabled = !pointerLive;
-  $('mouse').classList.toggle('on', s.mouse);
-  $('mouse-state').textContent = s.mouse ? 'on' : 'off';
-  $('keys').classList.toggle('on', s.keys === 'on');
-  $('keys-state').textContent = s.keys === 'unavailable' ? 'n/a' : s.keys === 'loading' ? '…' : s.keys;
-  $<HTMLButtonElement>('keys').disabled = s.keys === 'unavailable';
+let prev: RemoteState | null = null;
+/** The text line shows whichever of Orion and dictation spoke last. */
+let voiceLine = '';
 
-  // Orion: one big button when idle; OK + Cancel while listening or asking; Cancel (= stop) while busy.
-  const idle = s.orion === 'idle';
-  $('orion').hidden = !idle;
-  $('choice').hidden = idle;
-  $('ok').hidden = s.orion !== 'listening' && s.orion !== 'confirm';
-  $('ok').textContent = s.orion === 'confirm' ? 'Yes' : 'OK';
-  $('cancel').textContent = s.orion === 'working' ? 'Stop' : s.orion === 'confirm' ? 'No' : 'Cancel';
-  $('orion-text').textContent = s.orionMissing ? `Orion is off: ${s.orionMissing}` : (ORION_HINT[s.orion] ?? s.orionText);
+function render(s: RemoteState) {
+  const voice = s.orion !== 'idle' || s.dictation === 'listening' || s.dictation === 'transcribing';
+  for (const b of ['left', 'right', 'wheel'] as const) {
+    const label = s.labels[b];
+    const el = $<HTMLButtonElement>(b);
+    el.textContent = label || '—';
+    el.disabled = !label;
+    // Answers in colour: OK / Yes / Type it on the left, Cancel / No / Stop on the right.
+    el.classList.toggle('ok', voice && b === 'left');
+    el.classList.toggle('cancel', voice && b === 'right');
+  }
+  $('speed-box').classList.toggle('live', s.ui === 'scroll');
+  if (s.orion !== prev?.orion || s.orionText !== prev?.orionText) voiceLine = ORION_HINT[s.orion] ?? s.orionText;
+  if (s.dictation !== prev?.dictation || s.dictationText !== prev?.dictationText) voiceLine = DICTATION_HINT[s.dictation] ?? s.dictationText;
+  $('orion-text').textContent = voiceLine;
+  prev = s;
+}
+
+function safeGet(k: string): string | null {
+  try {
+    return localStorage.getItem(k);
+  } catch {
+    return null;
+  }
+}
+
+function safeSet(k: string, v: string) {
+  try {
+    localStorage.setItem(k, v);
+  } catch {}
 }
 
 /** A button that reports press and release (not click), so holding Click drags. */
@@ -184,15 +202,5 @@ function holdButton(el: HTMLElement, onChange: (down: boolean) => void) {
   });
   el.addEventListener('pointerup', () => set(false));
   el.addEventListener('pointercancel', () => set(false));
-  el.addEventListener('contextmenu', (e) => e.preventDefault());
-}
-
-/** Fires on press, not on click: a click waits for the finger to lift and can be eaten by a tiny drag. */
-function tap(el: HTMLElement, fn: () => void) {
-  el.addEventListener('pointerdown', () => {
-    if ((el as HTMLButtonElement).disabled) return;
-    navigator.vibrate?.(15);
-    fn();
-  });
   el.addEventListener('contextmenu', (e) => e.preventDefault());
 }

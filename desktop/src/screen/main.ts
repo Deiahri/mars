@@ -7,7 +7,7 @@
 
 import './screen.css';
 import QRCode from 'qrcode';
-import { startHost, type Host, type LinkStatus, type PointerMode, type RemoteState } from '../net/link';
+import { isUp, startHost, type Host, type LinkStatus, type RemoteState } from '../net/link';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const hot = import.meta.hot;
@@ -22,6 +22,7 @@ const LINK_TEXT: Record<LinkStatus, string> = {
   waiting: 'phone: scan the QR code',
   connecting: 'phone: connecting…',
   connected: 'phone: connected',
+  relayed: 'phone: connected via relay',
   lost: 'phone: link lost',
 };
 
@@ -80,6 +81,7 @@ hot?.on('gm:state', (s: RemoteState) => {
   host?.send({ type: 'state', state: s });
   render();
   if (s.orionText && (s.orionText !== prev?.orionText || s.orion !== prev?.orion)) log(s.orionText);
+  if (s.dictationText && s.dictationText !== prev?.dictationText) log(`Dictation: ${s.dictationText}`);
 });
 
 type PointerStatus = {
@@ -92,13 +94,60 @@ type PointerStatus = {
   app: string;
   snapped: string | null;
   fixating: boolean;
+  /** server/vision-targets.ts VisionStatus. */
+  ai: { state: string; count: number; scans: number; cacheHits: number; lastMs: number | null; costUsd: number; error: string | null };
 };
+const AI_TEXT: Record<string, string> = { waiting: 'watching the screen', scanning: 'looking…', ready: 'ready', error: 'error', off: '' };
 hot?.on('gm:pointer', (p: PointerStatus) => {
   $('pos').textContent = p.x === null ? '—' : `${p.x}, ${p.y}`;
-  $('ptr-state').textContent = p.snapped ? `on ${p.snapped.startsWith('strip:') ? `strip ${p.snapped.slice(6)}` : 'a button'}` : p.fixating ? 'holding still' : '';
+  $('ptr-state').textContent = p.snapped ? `on ${p.snapped.startsWith('wheel:') ? `wheel ${p.snapped.slice(6)}` : 'a button'}` : p.fixating ? 'holding still' : '';
   $('dwell-now').textContent = String(p.dwellMs);
   $('offset').textContent = `${p.offset.x}, ${p.offset.y}`;
   $('targets').textContent = state?.snap ? `${p.targets} targets${p.app ? ` in ${p.app}` : ''}` : '';
+  const ai = p.ai;
+  $('ai-status').textContent =
+    !ai || ai.state === 'off'
+      ? ''
+      : [
+          ai.state === 'error' && ai.error ? ai.error : AI_TEXT[ai.state] ?? ai.state,
+          ai.count ? `${ai.count} boxes` : '',
+          ai.scans ? `${ai.scans} looks${ai.lastMs ? `, last ${(ai.lastMs / 1000).toFixed(1)} s` : ''}` : '',
+          ai.cacheHits ? `${ai.cacheHits} reused` : '',
+          ai.costUsd ? `≈ $${ai.costUsd.toFixed(2)}` : '',
+        ]
+          .filter(Boolean)
+          .join(' · ');
+});
+
+/** server/memory/recorder.ts MemoryStatus. */
+type MemoryStatus = {
+  state: 'unavailable' | 'off' | 'paused' | 'recording';
+  note: string | null;
+  kept: number;
+  same: number;
+  skipped: number;
+  captioned: number;
+  failed: number;
+  queued: number;
+  costUsd: number;
+  total: number;
+};
+let memory: MemoryStatus | null = null;
+hot?.on('gm:memory', (m: MemoryStatus) => {
+  memory = m;
+  const text = m.state === 'unavailable' ? 'unavailable' : m.state === 'paused' ? 'paused (data/memory/PAUSE)' : m.state;
+  pill('memory', text, m.state === 'recording' ? 'on' : m.state === 'unavailable' ? 'unavailable' : 'off');
+  $('memory-toggle').textContent = m.state === 'off' || m.state === 'unavailable' ? 'turn on' : 'turn off';
+  $('memory-status').textContent = [
+    m.note ?? '',
+    m.state !== 'off' && m.state !== 'unavailable' ? `${m.kept} kept, ${m.same} unchanged` : '',
+    m.captioned ? `${m.captioned} captioned${m.queued ? `, ${m.queued} waiting` : ''}` : '',
+    m.failed ? `${m.failed} failed` : '',
+    m.costUsd ? `≈ $${m.costUsd.toFixed(3)}` : '',
+    `${m.total} in memory`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 });
 
 hot?.on('gm:heard', ({ text }: { text: string }) => {
@@ -135,8 +184,7 @@ function wire(h: Host) {
 
   h.onEvent((msg) => {
     if (msg.type === 'button') hot?.send('gm:button', { button: msg.button, down: msg.down });
-    else if (msg.type === 'toggle') hot?.send('gm:toggle', { what: msg.what });
-    else if (msg.type === 'orion') hot?.send('gm:orion', { action: msg.action });
+    else if (msg.type === 'scroll-speed') hot?.send('gm:scroll-speed', { perS: msg.perS });
     else if (msg.type === 'centered') {
       hot?.send('gm:recentered');
       log('Phone centered.');
@@ -171,8 +219,11 @@ for (const [id, d] of [['dwell-down', -100], ['dwell-up', 100]] as const) {
     render();
   });
 }
+$('mouse-toggle').addEventListener('click', () => hot?.send('gm:toggle', { what: 'mouse' }));
 $('dwell').addEventListener('click', () => hot?.send('gm:toggle', { what: 'dwell' }));
 $('snap').addEventListener('click', () => hot?.send('gm:toggle', { what: 'snap' }));
+$('ai').addEventListener('click', () => hot?.send('gm:toggle', { what: 'ai' }));
+$('memory-toggle').addEventListener('click', () => hot?.send('gm:memory', { on: !memory || memory.state === 'off' || memory.state === 'unavailable' }));
 $('dwell-reset').addEventListener('click', () => hot?.send('gm:pointer-reset', { what: 'adaptive' }));
 $('offset-reset').addEventListener('click', () => hot?.send('gm:pointer-reset', { what: 'offset' }));
 for (const [id, d] of [['gap-down', -50], ['gap-up', 50]] as const) {
@@ -194,13 +245,15 @@ const ORION_TEXT: Record<RemoteState['orion'], string> = {
   confirm: 'asking',
 };
 
-const MODE_TEXT: Record<PointerMode, string> = {
-  left: 'click',
-  right: 'right click',
-  double: 'double click',
-  drag: 'drag',
-  scroll: 'scroll',
-};
+/** What the pointer is doing, for the "Doing" pill. */
+function doingText(s: RemoteState): string {
+  if (s.paused) return 'paused';
+  if (s.ui === 'wheel') return 'wheel open';
+  if (s.ui === 'zoom') return `zoom ${s.zoomK}×`;
+  if (s.ui === 'scroll') return 'scrolling';
+  if (s.pending) return `next: ${s.pending} click`.replace('drag click', 'drag');
+  return 'pointing';
+}
 
 function render() {
   $('dist').textContent = distanceK.toFixed(1);
@@ -210,12 +263,17 @@ function render() {
   $('angle').textContent = `${Math.round((2 * Math.atan(1 / (2 * distanceK)) * 180) / Math.PI)}°`;
   if (!state) return;
   pill('mouse', state.mouse ? 'on' : 'off', state.mouse ? 'on' : 'off');
+  $('mouse-toggle').textContent = state.mouse ? 'turn off' : 'turn on';
   pill('keys', state.keys === 'unavailable' ? 'run npm run setup:keys' : state.keys, state.keys);
   pill('orion', state.orionMissing ? state.orionMissing : ORION_TEXT[state.orion], state.orionMissing ? 'unavailable' : state.orion);
   $('orion-text').textContent = state.orion === 'idle' ? '' : state.orionText;
-  pill('mode', state.paused ? 'paused' : MODE_TEXT[state.mode], state.paused ? 'listening' : 'on');
+  pill('dictation', state.dictation === 'unavailable' ? 'needs ELEVENLABS_API_KEY' : state.dictation === 'idle' ? 'ready' : state.dictation, state.dictation === 'unavailable' ? 'unavailable' : state.dictation);
+  $('dictation-text').textContent = state.dictationText;
+  pill('mode', doingText(state), state.paused ? 'listening' : 'on');
   toggleButton('dwell', state.dwell);
   toggleButton('snap', state.snap);
+  toggleButton('ai', state.ai !== 'off' && state.ai !== 'unavailable');
+  if (state.ai === 'unavailable') $('ai').textContent = 'needs ANTHROPIC_API_KEY';
 }
 
 function toggleButton(id: string, on: boolean) {
@@ -266,9 +324,9 @@ setInterval(() => {
   const now = performance.now();
   const status = host.status();
   connectingSince = status === 'connecting' ? (connectingSince ?? now) : null;
-  const silent = status === 'connected' && host.lastPongAt() > 0 && now - host.lastPongAt() > SILENT_MS;
+  const silent = isUp(status) && host.lastPongAt() > 0 && now - host.lastPongAt() > SILENT_MS;
   // The phone is there or not: the server freezes the pointer while it isn't.
-  const ok = status === 'connected' && !silent;
+  const ok = isUp(status) && !silent;
   if (ok !== tracking) {
     tracking = ok;
     hot?.send('gm:tracking', { ok });
@@ -276,9 +334,9 @@ setInterval(() => {
   const rtt = host.rttMs();
   $('link').textContent = silent
     ? 'phone: no signal'
-    : LINK_TEXT[status] + (status === 'connected' && rtt !== null ? ` · ${rtt.toFixed(0)} ms` : '');
-  $('link-dot').className = `dot ${silent || status === 'lost' ? 'bad' : status === 'connected' ? 'ok' : ''}`;
-  $('connect').classList.toggle('small', status === 'connected' && !silent);
+    : LINK_TEXT[status] + (isUp(status) && rtt !== null ? ` · ${rtt.toFixed(0)} ms` : '');
+  $('link-dot').className = `dot ${silent || status === 'lost' ? 'bad' : isUp(status) ? 'ok' : ''}`;
+  $('connect').classList.toggle('small', isUp(status) && !silent);
   if (connectingSince !== null && now - connectingSince > STUCK_CONNECTING_MS) {
     $('connect-warn').textContent =
       'The phone found this page but can’t reach it directly. This Wi-Fi probably blocks devices from talking to each other: turn on the phone’s hotspot, join this laptop to it, and reload both pages.';

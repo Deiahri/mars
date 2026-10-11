@@ -28,6 +28,10 @@ export default defineConfig(({ mode }) => {
           language: env.STT_LANGUAGE || 'en',
         },
         hasClaude: Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN),
+        // Claude finds snap targets in screenshots (Sonnet 5.5, a few cents per new screen). AI_SNAP=0: off at start.
+        aiSnap: env.AI_SNAP !== '0' && env.AI_SNAP !== 'false',
+        // Screen memory (server/memory/) recording at start. Off unless MEMORY=1: kept frames go to Anthropic.
+        memory: env.MEMORY === '1' || env.MEMORY === 'true',
       }),
     ],
     build: {

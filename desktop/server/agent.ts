@@ -7,6 +7,8 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import type { Desktop } from './computer.ts';
+import type { Memory } from './memory/memory.ts';
+import { isMemoryTool, MEMORY_PROMPT, MEMORY_TOOLS, runMemoryTool } from './memory/tools.ts';
 import { MouseWatch, needsConfirm } from './safety.ts';
 
 type Beta = Anthropic.Beta.Messages.BetaMessageParam;
@@ -33,6 +35,8 @@ export type AgentOpts = {
   maxSteps: number;
   /** On: ask_user + risky-action gate + mouse-takeover/corner aborts. Off: none of those interrupt the task. */
   safeMode: boolean;
+  /** Screen memory (server/memory/), when it has anything: Orion can answer from what was on screen earlier. */
+  memory?: () => Memory | null;
 };
 
 const CONFIRM_TIMEOUT_MS = 60_000;
@@ -51,7 +55,7 @@ const ASK_USER: Anthropic.Beta.Messages.BetaTool = {
   strict: true,
 };
 
-function system(w: number, h: number, safe: boolean): string {
+function system(w: number, h: number, safe: boolean, memory: boolean): string {
   // Stable per screen size and mode, so it caches.
   const safeRules = safe
     ? `
@@ -66,8 +70,8 @@ How to work:
 - A browser tab or window titled "Gymote Desktop" is your own control panel. Never click, type into, or close it; switch away from it to do the task.
 - A small dark pill near the bottom of the screen is a status overlay. Ignore it; it never takes focus.
 - If something unexpected appears (a login prompt, a payment page, a permission dialog), stop and say so instead of guessing.${safeRules}
-
-When you are finished (or can't continue), reply with one short sentence that will be read aloud, saying what you did or what went wrong. No markdown.`;
+${memory ? `\n${MEMORY_PROMPT}\n` : ''}
+When you are finished (or can't continue), reply with one short sentence that will be read aloud, saying what you did or what went wrong${memory ? ' (up to three sentences when the answer comes from memory)' : ''}. No markdown.`;
 }
 
 export class Agent {
@@ -140,6 +144,10 @@ export class Agent {
   private async loop(command: string, signal: AbortSignal): Promise<{ text: string; steps: number }> {
     this.client ??= new Anthropic();
     const [w, h] = this.desktop.shotSize;
+    const mem = this.opts.memory?.() ?? null;
+    const tools: Anthropic.Beta.Messages.BetaToolUnion[] = [{ type: 'computer_toolset_20260801' }];
+    if (this.opts.safeMode) tools.push(ASK_USER);
+    if (mem) tools.push(...MEMORY_TOOLS);
     const recap = this.history.length
       ? `Earlier commands this session (most recent last):\n${this.history.map((x) => `- "${x.command}" → ${x.summary}`).join('\n')}\n\n`
       : '';
@@ -171,8 +179,8 @@ export class Agent {
           thinking: { type: 'adaptive', display: 'updates' },
           output_config: { effort: this.opts.effort },
           cache_control: { type: 'ephemeral' },
-          system: system(w, h, this.opts.safeMode),
-          tools: this.opts.safeMode ? [{ type: 'computer_toolset_20260801' }, ASK_USER] : [{ type: 'computer_toolset_20260801' }],
+          system: system(w, h, this.opts.safeMode, !!mem),
+          tools,
           messages,
         },
         { signal },
@@ -227,6 +235,18 @@ export class Agent {
           const ok = await this.ask(String(input.question ?? 'Should I continue?'), signal);
           if (ok) approvedFor = 4;
           results.push({ ...base, content: ok ? 'The person said yes.' : "The person said no. Don't do it; stop or find another way." });
+          continue;
+        }
+        if (!isComputer && mem && isMemoryTool(use.name)) {
+          // Reading the past never touches the desktop, so a failure here doesn't stop the batch.
+          try {
+            results.push({ ...base, content: await runMemoryTool(mem, use.name, input) });
+            this.emit({ type: 'action', name: use.name, input, ok: true });
+          } catch (e) {
+            const detail = e instanceof Error ? e.message : String(e);
+            this.emit({ type: 'action', name: use.name, input, ok: false, detail });
+            results.push({ ...base, is_error: true, content: `Error: ${detail}` });
+          }
           continue;
         }
         if (!isComputer) {

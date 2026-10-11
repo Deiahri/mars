@@ -6,7 +6,7 @@ An override-redirect window is unmanaged by the window manager: it's never focus
 normal windows. (From gaze-desktop, with Orion and keystroke states instead of dictation.)
 
 stdin, one JSON object per line (from server/plugin.ts):
-  {"state": "listening", "level": 0..1}  Orion is recording your command
+  {"state": "listening", "level": 0..1, "text"?: "..."}  Orion or dictation is recording
   {"state": "transcribing"}
   {"state": "working", "text": "..."}    Orion's progress; stays up
   {"state": "done", "text": "..."}       Orion's summary; fades after HOLD_MS
@@ -99,7 +99,9 @@ def show(state: str, text: str, color: str, with_meter: bool):
     root.deiconify()
     root.lift()
     if state in HOLD_MS:
-        hide_job = root.after(HOLD_MS[state], root.withdraw)
+        # Long texts (an answer from screen memory) stay up long enough to read: ~60 ms a character.
+        hold = HOLD_MS[state] if state == "info" else max(HOLD_MS[state], 60 * len(text))
+        hide_job = root.after(min(hold, 25000), root.withdraw)
 
 
 def handle(m: dict):
@@ -111,8 +113,9 @@ def handle(m: dict):
         # Smooth the level a little so the bar doesn't flicker.
         level = level * 0.5 + float(m.get("level", 0)) * 0.5
         meter.coords(meter_id, 0, 0, int(220 * min(1.0, level)), 4)
-        if not root.winfo_viewable() or label.cget("text") != LISTENING:
-            show("listening", LISTENING, COLORS["listening"], True)
+        want = str(m.get("text") or LISTENING)
+        if not root.winfo_viewable() or label.cget("text") != want:
+            show("listening", want, COLORS["listening"], True)
     elif state == "transcribing":
         show("transcribing", "Transcribing…", COLORS["transcribing"], False)
     elif state in COLORS:

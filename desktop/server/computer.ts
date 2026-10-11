@@ -119,6 +119,22 @@ export class Desktop {
     return this.grab(this.scale < 1 ? `scale=${w}:${h}` : undefined);
   }
 
+  /** A tiny grayscale copy of the screen (w×h bytes, row by row), for noticing when it changes. */
+  async thumb(w: number, h: number): Promise<Uint8Array> {
+    const args = ['-loglevel', 'error', '-f', 'x11grab', '-draw_mouse', '0', '-video_size', `${this.width}x${this.height}`, '-i', `${this.display}+0,0`, '-frames:v', '1'];
+    args.push('-vf', `scale=${w}:${h}:flags=area,format=gray`, '-f', 'rawvideo', '-');
+    const { stdout } = await run('ffmpeg', args, { encoding: 'buffer', maxBuffer: 1024 * 1024 });
+    return new Uint8Array(stdout);
+  }
+
+  /** A region of the screen (screen px) as a PNG at full resolution, without the arrow (zoom-click). */
+  async region(x: number, y: number, w: number, h: number): Promise<Buffer> {
+    const args = ['-loglevel', 'error', '-f', 'x11grab', '-draw_mouse', '0', '-video_size', `${w}x${h}`, '-i', `${this.display}+${x},${y}`, '-frames:v', '1'];
+    args.push('-c:v', 'png', '-f', 'image2pipe', '-');
+    const { stdout } = await run('ffmpeg', args, { encoding: 'buffer', maxBuffer: 64 * 1024 * 1024 });
+    return stdout;
+  }
+
   /** A region (screenshot coords) at full resolution, blown up to fit the usual screenshot size. */
   zoom(region: number[]): Promise<Buffer> {
     const [x0, y0, x1, y1] = region.map((v) => Math.round(v / this.scale));

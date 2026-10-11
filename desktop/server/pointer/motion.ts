@@ -7,6 +7,11 @@
 // it's a fixation, and the aim locks to one anchor (the mean of the raw input over that time) so
 // tremor and microsaccades don't move the cursor at all. Moving more than LOCK_DEG from the
 // anchor, or speeding up, releases it.
+//
+// Creep: a small, slow correction (nudging onto a button a few px away) is neither fast nor far
+// enough to release the lock, so on its own it would leave the pointer stuck just short. Tremor
+// averages out around the anchor; a correction doesn't. So when the recent mean of the input sits
+// more than CREEP_DEG off the anchor, the anchor glides there, without starting a new fixation.
 // Pure (no timers, no I/O) so scripts/pointer-test.ts can drive it with fake time.
 
 import { OneEuro } from './filter.ts';
@@ -27,6 +32,14 @@ export const MOTION = {
   FIX_MIN_MS: 100,
   /** ° the filtered point may wander from the anchor before the lock lets go. */
   LOCK_DEG: 0.8,
+  /** ms of raw input averaged to tell a deliberate correction from tremor (≤ 4 × VEL_WINDOW_MS, which is kept). */
+  CREEP_WINDOW_MS: 150,
+  /** ° that average must sit off the anchor before the anchor follows it. */
+  CREEP_DEG: 0.15,
+  /** ° from the average at which the anchor has arrived and stops following. */
+  CREEP_STOP_DEG: 0.04,
+  /** 1/s. How fast the anchor glides to the average (63% in 1/rate s). */
+  CREEP_RATE: 10,
   /** ms of raw input the speed is measured over (long enough to ignore one noisy sample). */
   VEL_WINDOW_MS: 50,
   /** rad/s. Spring stiffness: 90% of a jump in 3.9/ω s (≈65 ms), lag while tracking 2/ω (≈33 ms). */
@@ -61,6 +74,8 @@ export class Motion {
   private filtered: Pt | null = null;
   private slowSince: number | null = null;
   private anchor: Pt | null = null;
+  /** The anchor is gliding toward a correction (creep). */
+  private creeping = false;
   private fixId = 0;
   private fastTicks = 0;
 
@@ -89,6 +104,7 @@ export class Motion {
     this.filtered = null;
     this.slowSince = null;
     this.anchor = null;
+    this.creeping = false;
     this.fastTicks = 0;
   }
 
@@ -112,6 +128,19 @@ export class Motion {
       x: pts.reduce((a, p) => a + p.x, 0) / pts.length,
       y: pts.reduce((a, p) => a + p.y, 0) / pts.length,
     };
+  }
+
+  /** Glides the anchor onto a sustained small correction (see the top of the file). */
+  private creep(t: number, dt: number) {
+    const anchor = this.anchor!;
+    const ppd = this.pxPerDeg;
+    const mean = this.centroid(t - MOTION.CREEP_WINDOW_MS);
+    const off = dist(mean, anchor);
+    if (!this.creeping && off > MOTION.CREEP_DEG * ppd) this.creeping = true;
+    if (!this.creeping) return;
+    const k = 1 - Math.exp(-MOTION.CREEP_RATE * dt);
+    this.anchor = { x: anchor.x + (mean.x - anchor.x) * k, y: anchor.y + (mean.y - anchor.y) * k };
+    if (dist(mean, this.anchor) < MOTION.CREEP_STOP_DEG * ppd) this.creeping = false;
   }
 
   tick(t: number): MotionOut | null {
@@ -138,8 +167,9 @@ export class Motion {
     }
     if (!this.anchor && this.slowSince !== null && t - this.slowSince >= MOTION.FIX_MIN_MS) {
       this.anchor = this.centroid(this.slowSince);
+      this.creeping = false;
       this.fixId++;
-    }
+    } else if (this.anchor) this.creep(t, dt);
     return {
       filtered: this.filtered,
       aim: this.anchor ?? this.filtered,
