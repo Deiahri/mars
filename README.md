@@ -56,10 +56,15 @@ Many switch users have two or three switches. Sightline needs three: **Left**, *
   - Screenshots never leave the laptop.
 - **It remembers you, on Backboard.** Say "remember that my sister is Ana" once, and next week "message my sister" just works.
 
-### Eye cams
+### Eye cams and head mount
 
+<img src="mount/preview.png" alt="The 3D-printed face mount" width="360" align="right">
+
+- **The mount:** a 3D-printed, glasses-style frame that rests on the nose and ears. It's about an hour to print in PLA, and the Blender source is included so it can be refit to one person's face.
 - **On the head:** ESP32-CAM firmware streams MJPEG over plain HTTP (the first HTTPS/base64 attempt ran out of memory).
 - **On the laptop:** a reader keeps only the newest frame, so latency stays flat, and finds the pupil as the darkest round blob.
+
+<br clear="right">
 
 ## Status
 
@@ -129,6 +134,7 @@ Also built with: Vosk, Ollama (`embeddinggemma`), AT-SPI, GTK + cairo, Gymote, V
 |---|---|
 | [`desktop/`](desktop/) | The laptop app: pointer, wheel, overlays, dictation, voice keys, Orion, memory. Full guide in [`desktop/README.md`](desktop/README.md) |
 | [`eyecam/`](eyecam/) | ESP32-CAM firmware, flash script and laptop pupil reader. Wiring and flashing in [`eyecam/README.md`](eyecam/README.md) |
+| [`mount/`](mount/) | The 3D-printed head mount: STL files, the Blender source, and print settings in [`mount/README.md`](mount/README.md) |
 
 ## Run it
 
@@ -184,5 +190,9 @@ GM_DRY_RUN=1 npm run dev    # log pointer actions instead of moving the mouse
 ## Team
 
 - Junda Yin ([@Deiahri](https://github.com/Deiahri))
-- Jonah ([@jonahp-coding](https://github.com/jonahp-coding))
+- Jonah Phillips ([@jonahp-coding](https://github.com/jonahp-coding))
 - Gabriel Eisenberg ([@eisenbergabe](https://github.com/eisenbergabe))
+
+## License
+
+[MIT](LICENSE). Build it, change it, fit it to someone, and share what you improve.
