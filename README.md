@@ -1,12 +1,14 @@
-# Sightline
+# MARS
+
+*Multimodal Aided Retrieval System*
 
 **Hands-free desktop control, designed for eye gaze. For now you point with your phone, held like a TV remote. Its buttons or your voice do the rest.**
 
-> **Where it stands.** What works today is the **phone-remote version**. Aim the phone at the screen and the real pointer follows; the phone's three buttons are the switches. The eye-tracking hardware isn't working yet. We've printed the mask that holds the cameras, but it still needs refining. We also ran into problems with the ESP32 eye cams, and they don't work yet. Getting the hardware working is our next step: see [What's next](#whats-next).
+> **Where it stands.** What works today is the **phone-remote version**. Aim the phone at the screen and the real pointer follows; the phone's three buttons are the switches. The eye-tracking hardware is partway there. An ESP32 eye cam streams live video to the laptop, but it doesn't drive the pointer yet. We've printed the mask that holds the cameras, but it still needs refining. Wiring the cams into the pointer is our next step: see [What's next](#whats-next).
 
-Sightline is for people who can talk but can't use their hands well: spinal cord injury, muscular dystrophy, ALS, MS, stroke, severe arthritis. The goal is an open eye-tracking setup you build yourself. Two ESP32 cameras on a 3D-printed mask watch the eyes, and a pointer built around how gaze really behaves moves the real mouse. Voice handles the rest: dictation, game keys, and **Mars**, an assistant that operates the computer for you.
+MARS is for people who can talk but can't use their hands well: spinal cord injury, muscular dystrophy, ALS, MS, stroke, severe arthritis. The goal is an open eye-tracking setup you build yourself. Two ESP32 cameras on a 3D-printed mask watch the eyes, and a pointer built around how gaze really behaves moves the real mouse. Voice handles the rest: dictation, game keys, and **Mars**, an assistant that operates the computer for you.
 
-Built at **CodeRED Orion 2026** (University of Houston, Oct 10–11).
+Built at **CodeRED Orion 2026** (University of Houston, Oct 10–11), where it won **[MLH] Best Use of Backboard**. [Devpost](https://devpost.com/software/orion-qm3yaw) · [Demo video](https://youtu.be/y3NREzp5fB8)
 
 ## Why
 
@@ -18,13 +20,13 @@ We're not trying to out-build a medical-grade tracker. We're making something ch
 
 ## Using it today: the phone remote
 
-The pointer takes raw aim and doesn't care where it comes from. While the eye cams aren't working, a phone stands in for them through [Gymote](https://github.com/dulnan/gymote): hold it like a TV remote, and its gyroscope gives a point on the screen.
+The pointer takes raw aim and doesn't care where it comes from. Until the eye cams are wired in, a phone stands in for them through [Gymote](https://github.com/dulnan/gymote): hold it like a TV remote, and its gyroscope gives a point on the screen.
 
 - **Aim** the phone, and the real desktop pointer follows.
 - **Left, Right and Menu**, the phone's three big buttons, are the three switches a gaze user would press.
 - **Center** makes where you're aiming the middle of the screen again when the aim drifts.
 
-The phone is only a remote: the laptop does all the work. Like gaze, phone aim is jittery and drifts, which made it a good stand-in for tuning the pointer. Once the eye cams work, they'll feed the pointer at the same point and the phone goes away.
+The phone is only a remote: the laptop does all the work. Like gaze, phone aim is jittery and drifts, which made it a good stand-in for tuning the pointer. Once the eye cams are wired in, they'll feed the pointer at the same point and the phone goes away.
 
 ## What it does
 
@@ -41,7 +43,7 @@ Raw gaze makes a bad mouse: it jitters, drifts and lands a little off. The point
 
 ### Everything from three switches
 
-Many switch users have two or three switches. Sightline needs three: **Left**, **Right** and **Menu**. For now they're the phone's three buttons. Menu opens an on-screen wheel around the pointer:
+Many switch users have two or three switches. MARS needs three: **Left**, **Right** and **Menu**. For now they're the phone's three buttons. Menu opens an on-screen wheel around the pointer:
 
 - **Zoom-click:** a frozen 3× snapshot around the pointer, for hitting small targets. Nothing moves under your eye.
 - **Click types:** double, triple, middle, and drag & drop.
@@ -72,14 +74,14 @@ Many switch users have two or three switches. Sightline needs three: **Left**, *
 
 <img src="mount/preview.png" alt="The 3D-printed mask" width="360" align="right">
 
-This is the hardware that will replace the phone. It doesn't work end to end yet.
+This is the hardware that will replace the phone. It isn't wired in end to end yet.
 
 - **The mask** ([`mount/`](mount/)): a 3D-printed, glasses-style frame that rests on the nose and ears and holds the cameras.
   - We've printed it (about an hour in PLA), but it isn't refined yet. It has to fit snugly: if it slips, the cameras move relative to the eyes and the calibration goes off.
   - The Blender source is included, so it can be refit to one person's face.
-- **The ESP32 eye cams** ([`eyecam/`](eyecam/)): this is where we had problems, and they don't work yet.
+- **The ESP32 eye cams** ([`eyecam/`](eyecam/)): they stream live video to the laptop, but don't drive the pointer yet.
   - Our first firmware sent each frame as base64 JSON over HTTPS. It ran out of memory on the board.
-  - We rewrote it to stream MJPEG over plain HTTP. The new firmware compiles, but we haven't got the cams working yet.
+  - We rewrote it to stream MJPEG over plain HTTP. Live video from the cam now reaches the laptop.
   - The campus guest Wi-Fi stops devices from reaching each other, so the cams need a phone hotspot.
 - **The pupil reader** ([`eyecam/host/`](eyecam/host/)): runs on the laptop, keeps only the newest frame so latency stays flat, and finds the pupil as the darkest round blob. So far it has only been tested against a simulated ESP32 stream.
 
@@ -95,15 +97,15 @@ This is the hardware that will replace the phone. It doesn't work end to end yet
 | Mars (Gemini computer use) with spoken replies | Working |
 | Screen memory (Tiger Cloud), person memory (Backboard) | Working |
 | Mask | Printed. Fit not refined yet |
-| ESP32 eye cams | **Not working yet.** Firmware rewritten; it compiles (arduino-cli, esp32 core 3.3.12) |
+| ESP32 eye cams | **Streaming.** Live video reaches the laptop; not wired into the pointer yet |
 | Laptop pupil reader | Tested only against a simulated ESP32 stream: 24 fps, pupil found in 138 of 138 frames |
-| Eye cams → pointer | Not started. Needs working cams, IR LEDs, and calibration |
+| Eye cams → pointer | Not started. Needs the pupil reader on real eye video, IR LEDs, and calibration |
 
 ## How it works
 
 ```mermaid
 flowchart LR
-  eyes["Eye cams + mask<br/>2× ESP32-CAM<br/>(not working yet)"] -. next .-> brain
+  eyes["Eye cams + mask<br/>2× ESP32-CAM<br/>(streaming, not wired in)"] -. next .-> brain
   phone["Phone remote<br/>(what works today)"] -- "aim + 3 switches" --> brain
   mic["Microphone"] --> voice
 
@@ -152,7 +154,7 @@ Also built with: Vosk, Ollama (`embeddinggemma`), AT-SPI, GTK + cairo, Gymote, V
 | Folder | What's in it |
 |---|---|
 | [`desktop/`](desktop/) | **The part that works today.** The laptop app driven by the phone remote: pointer, wheel, overlays, dictation, voice keys, Mars, memory. Full guide in [`desktop/README.md`](desktop/README.md) |
-| [`eyecam/`](eyecam/) | **Work in progress, not working yet.** ESP32-CAM firmware, flash script and laptop pupil reader. Wiring and flashing in [`eyecam/README.md`](eyecam/README.md) |
+| [`eyecam/`](eyecam/) | **Work in progress.** Streams video; not wired into the pointer yet. ESP32-CAM firmware, flash script and laptop pupil reader. Wiring and flashing in [`eyecam/README.md`](eyecam/README.md) |
 | [`mount/`](mount/) | **Work in progress.** The 3D-printed mask, printed but not refined: STL files, the Blender source, and print settings in [`mount/README.md`](mount/README.md) |
 
 ## Run it
@@ -181,7 +183,7 @@ npm run test:keys           # voice word → key logic
 GM_DRY_RUN=1 npm run dev    # log pointer actions instead of moving the mouse
 ```
 
-**Working on the eye cams?** They don't work yet. Setup, wiring and flashing are in [`eyecam/README.md`](eyecam/README.md).
+**Working on the eye cams?** They stream, but aren't wired into the pointer yet. Setup, wiring and flashing are in [`eyecam/README.md`](eyecam/README.md).
 
 ## Safety and privacy
 
@@ -196,7 +198,7 @@ GM_DRY_RUN=1 npm run dev    # log pointer actions instead of moving the mouse
 
 The hardware, in order:
 
-1. **Get the ESP32 eye cams working**, streaming video to the laptop over a phone hotspot.
+1. **Wire the eye cams in.** They already stream to the laptop over a phone hotspot; next, run the pupil reader on their live video, mounted on the mask.
 2. **Refine the mask** so it fits snugly and holds the cameras steady in front of the eyes, without slipping.
 3. **Add IR lighting**, after an eye-safety check, so the pupil is easy to find.
 4. **Calibrate** pupil position to a point on the screen.
@@ -213,6 +215,7 @@ After that:
 - Junda Yin ([@Deiahri](https://github.com/Deiahri))
 - Jonah Phillips ([@jonahp-coding](https://github.com/jonahp-coding))
 - Gabriel Eisenberg ([@eisenbergabe](https://github.com/eisenbergabe))
+- Murphy Amos ([@MurphyAmos](https://github.com/MurphyAmos))
 
 ## License
 

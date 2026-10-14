@@ -1,6 +1,6 @@
-# Sightline: desktop app
+# MARS: desktop app
 
-The laptop side of [Sightline](../README.md): the gaze-ready pointer, the accessibility wheel, dictation, voice keys and Mars. It's built to be driven by the eyes, but the [eye cams](../eyecam/) don't work yet, so **today the phone remote is how you use it**. A phone stands in for the eyes through [Gymote](https://github.com/dulnan/gymote): aim the phone at the laptop like a TV remote and the **real desktop pointer** follows. The phone is only a remote: the laptop does all the work.
+The laptop side of [MARS](../README.md): the gaze-ready pointer, the accessibility wheel, dictation, voice keys and Mars. It's built to be driven by the eyes, but the [eye cams](../eyecam/) aren't wired in yet, so **today the phone remote is how you use it**. A phone stands in for the eyes through [Gymote](https://github.com/dulnan/gymote): aim the phone at the laptop like a TV remote and the **real desktop pointer** follows. The phone is only a remote: the laptop does all the work.
 
 The phone has three big buttons, like the two or three switches a gaze user would have. Each button's label always says what it does right now.
 

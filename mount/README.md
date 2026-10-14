@@ -1,8 +1,8 @@
-# Sightline: the mask
+# MARS: the mask
 
-A 3D-printed, glasses-style frame (the mask) that rests on the nose and ears and carries the [eye cams](../eyecam/) for [Sightline](../README.md).
+A 3D-printed, glasses-style frame (the mask) that rests on the nose and ears and carries the [eye cams](../eyecam/) for [MARS](../README.md).
 
-> **Printed, not refined yet.** We've printed it, but the fit still needs work, and the [eye cams](../eyecam/) it holds don't work yet. Until they do, Sightline runs on the [phone remote](../README.md#using-it-today-the-phone-remote).
+> **Printed, not refined yet.** We've printed it, but the fit still needs work, and the [eye cams](../eyecam/) it holds aren't wired into the pointer yet. Until they are, MARS runs on the [phone remote](../README.md#using-it-today-the-phone-remote).
 
 ![The mask (face-mount-big.stl)](preview.png)
 

@@ -1,8 +1,8 @@
-# Sightline: eye cam (ESP32-CAM → laptop stream)
+# MARS: eye cam (ESP32-CAM → laptop stream)
 
-The eye-tracking hardware for [Sightline](../README.md): an ESP32-CAM per eye on the [mask](../mount/), streaming to the laptop, which finds the pupil. Paths and commands below are relative to this folder (`eyecam/`).
+The eye-tracking hardware for [MARS](../README.md): an ESP32-CAM per eye on the [mask](../mount/), streaming to the laptop, which finds the pupil. Paths and commands below are relative to this folder (`eyecam/`).
 
-> **Not working yet.** We ran into problems with the ESP32-CAMs, and they don't stream yet. Until they do, Sightline runs on the [phone remote](../README.md#using-it-today-the-phone-remote). Getting these working is the next step. See [Status](#status).
+> **Streaming, not wired in yet.** An ESP32-CAM streams live video to the laptop, but it doesn't drive the pointer yet. Until it does, MARS runs on the [phone remote](../README.md#using-it-today-the-phone-remote). Wiring it in is the next step. See [Status](#status).
 
 Instead of the ESP32 pushing frames to a server, it now serves an MJPEG stream and the laptop pulls it.
 
@@ -92,8 +92,8 @@ That sketch fails with "Connection failed! Still out of memory for SSL." Five ca
   - Pupil found in 138 of 138 frames.
   - Median error 0.6 px.
   - Reconnects automatically after the stream drops.
-- **Firmware:** compiles cleanly with arduino-cli 1.5.1 and esp32 core 3.3.12 (33% flash, 18% RAM). **It doesn't work on the boards yet.**
+- **Firmware:** compiles cleanly with arduino-cli 1.5.1 and esp32 core 3.3.12 (33% flash, 18% RAM). An ESP32-CAM has streamed live video to a local server on the laptop.
 - **Not done:**
-  - **Working cams.** Getting the boards streaming to the laptop is the first job.
+  - **Wiring in.** Run the pupil reader on the live streams and feed the pointer.
   - **IR.** Pupil detection under normal room light will be shaky, so the next step is IR LEDs plus a lens without an IR filter. EyeTrackVR does this; follow its IR safety notes.
   - **Calibration** from pupil position to a point on the screen.
